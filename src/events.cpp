@@ -1,5 +1,7 @@
 #include "events.h"
 
+#include "area_title_hooks.h"
+#include "ds2_flavor.h"
 #include "item_hooks.h"
 #include "log.h"
 
@@ -12,13 +14,25 @@
 namespace sitcom {
 namespace {
 
-// Tentative TAE IDs (DS1-like). Confirmed IDs should replace these after CE playtest.
+// Tentative TAE IDs. DS1 leftovers kept; DS2 goods/estus band probed in logs.
 bool IsPickupAnim(std::int32_t anim) { return anim == 7520 || anim == 7522; }
-bool IsLadderFallAnim(std::int32_t anim) { return anim == 1560 || (anim >= 7050 && anim <= 7052); }
-bool IsFailCastAnim(std::int32_t anim) { return anim == 6299 || anim == 6399; }
-bool IsEmptyEstusAnim(std::int32_t anim) { return anim == 7588 || anim == 7589; }
-bool IsGoodsProbeAnim(std::int32_t anim) { return anim >= 7400 && anim <= 7600; }
-bool IsLockedUseAnim(std::int32_t anim) { return anim == 7510; }
+bool IsLadderFallAnim(std::int32_t anim) {
+  return anim == 1560 || (anim >= 7050 && anim <= 7052) || (anim >= 3100 && anim <= 3120);
+}
+bool IsFailCastAnim(std::int32_t anim) {
+  return anim == 6299 || anim == 6399 || anim == 2010 || anim == 2011;
+}
+bool IsEmptyEstusAnim(std::int32_t anim) {
+  // DSR-like + common DS2 drink / empty-flask candidates (confirm via probe logs).
+  return anim == 7588 || anim == 7589 || anim == 5000 || anim == 5001 || anim == 5002 ||
+         anim == 5010 || anim == 5011 || anim == 5100 || anim == 5101 || anim == 6000 ||
+         anim == 6001 || anim == 16 || anim == 17 || anim == 18 || anim == 19;
+}
+bool IsGoodsProbeAnim(std::int32_t anim) {
+  return (anim >= 7400 && anim <= 7600) || (anim >= 5000 && anim <= 5200) ||
+         (anim >= 6000 && anim <= 6200) || (anim >= 1 && anim <= 40);
+}
+bool IsLockedUseAnim(std::int32_t anim) { return anim == 7510 || anim == 2020 || anim == 2021; }
 
 bool AnimEntered(const GameSnapshot& snap, const GameSnapshot& prev, bool (*pred)(std::int32_t)) {
   return snap.anim_valid && prev.anim_valid && pred(snap.current_anim) && !pred(prev.current_anim);
@@ -46,6 +60,10 @@ void EventDetector::Reset() {
   last_fail_laugh_ms_ = 0;
   flags_seeded_ = false;
   gameplay_seeded_ms_ = 0;
+  stable_area_id_ = 0;
+  load_edge_armed_ = false;
+  deaths_at_load_start_ = 0;
+  last_wipe_ms_ = 0;
 }
 
 void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& audio) {
@@ -54,6 +72,18 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
   }
 
   const auto now = static_cast<std::uint64_t>(GetTickCount64());
+
+  // PlaceName wipe first — hook/poll on TitleInformation state machine.
+  AreaTitleHooksPoll();
+  if (cfg.wipe_on_area_title && !snap.on_title_screen && AreaTitleHooksPending() > 0 &&
+      (now - last_wipe_ms_) >= 1200) {
+    const int titles = AreaTitleHooksConsume();
+    if (titles > 0) {
+      LogWrite("event: area title card (TitleInformation x" + std::to_string(titles) + ")");
+      audio.Play(SoundCategory::SceneWipe);
+      last_wipe_ms_ = now;
+    }
+  }
 
   const int got = ItemHooksConsumeAcquired();
   const int suppressed = ItemHooksConsumeSuppressed();
@@ -96,13 +126,9 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     }
   }
 
-  // Area title proxy: map / area id rising edge while loaded (not last-bonfire-only if MapManager hit).
-  if (cfg.wipe_on_area_title && snap.in_gameplay && prev_.in_gameplay && snap.area_valid &&
-      prev_.area_valid && snap.area_id != prev_.area_id && snap.area_id != 0 && !snap.is_loading &&
-      !prev_.is_loading) {
-    LogWrite("event: area change id=" + std::to_string(prev_.area_id) + "→" +
-             std::to_string(snap.area_id));
-    audio.Play(SoundCategory::SceneWipe);
+  if (snap.on_title_screen || snap.game_state == kGameStateMainMenu) {
+    stable_area_id_ = 0;
+    load_edge_armed_ = false;
   }
 
   if (!snap.in_gameplay) {
@@ -161,20 +187,33 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
   if (cfg.applause_on_boss_death) {
     std::unordered_set<std::int32_t> prev_def(prev_.defeat_flags_on.begin(),
                                               prev_.defeat_flags_on.end());
+    bool clapped = false;
     for (const auto id : snap.defeat_flags_on) {
       if (prev_def.count(id) != 0) {
         continue;
       }
       LogWrite("event: boss defeated flag=" + std::to_string(id));
       audio.Play(SoundCategory::Applause);
+      clapped = true;
+      break;
+    }
+    if (!clapped) {
+      std::unordered_set<std::int32_t> prev_kills(prev_.boss_kills_on.begin(),
+                                                  prev_.boss_kills_on.end());
+      for (const auto off : snap.boss_kills_on) {
+        if (prev_kills.count(off) != 0) {
+          continue;
+        }
+        LogWrite("event: boss defeated kill-count off=0x" + std::to_string(off));
+        audio.Play(SoundCategory::Applause);
+        break;
+      }
     }
   }
 
   if (snap.anim_valid && prev_.anim_valid) {
-    if (cfg.laugh_on_empty_flask &&
-        (IsGoodsProbeAnim(snap.current_anim) || IsGoodsProbeAnim(prev_.current_anim)) &&
-        snap.current_anim != prev_.current_anim) {
-      LogWrite("probe: goods-anim " + std::to_string(prev_.current_anim) + "→" +
+    if (cfg.laugh_on_empty_flask && snap.current_anim != prev_.current_anim) {
+      LogWrite("probe: anim " + std::to_string(prev_.current_anim) + "→" +
                std::to_string(snap.current_anim));
     }
     if (cfg.laugh_on_empty_flask && AnimEntered(snap, prev_, IsEmptyEstusAnim)) {

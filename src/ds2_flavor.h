@@ -35,6 +35,9 @@ struct Ds2Offsets {
   int map_manager_from_base_a = -1;
   // LoadState AOB extra: int32 at resolved pointer + this == 1 when loading.
   int load_state_flag_off = 0;
+  // SoulMemory boss kill-count array (from GameManagerImp slot). -1 = unused.
+  int boss_counters_chain[6] = {-1, -1, -1, -1, -1, -1};
+  int boss_counters_chain_len = 0;
 };
 
 bool DetectFlavor();

@@ -18,15 +18,16 @@ std::uintptr_t ScanGameManagerImpSlot() {
   }
 
   if (IsScholar()) {
-    const std::uint8_t pat_a[] = {0x48, 0x8B, 0x05, 0, 0, 0, 0, 0x48, 0x8B, 0x58, 0x38,
-                                  0x48, 0x85, 0xDB, 0x74, 0,    0xF6};
-    const char mask_a[] = "xxx????xxxxxxxx?x";
-    auto hit = PatternScan(base, size, pat_a, mask_a);
+    // Prefer SoulMemory's GameManagerImp AOB so EventManager/boss chains match.
+    const std::uint8_t pat_sm[] = {0x48, 0x8B, 0x35, 0, 0, 0, 0, 0x48, 0x8B, 0xE9, 0x48, 0x85,
+                                   0xF6};
+    const char mask_sm[] = "xxx????xxxxxx";
+    auto hit = PatternScan(base, size, pat_sm, mask_sm);
     if (!hit) {
-      const std::uint8_t pat_b[] = {0x48, 0x8B, 0x35, 0, 0, 0, 0, 0x48, 0x8B, 0xE9, 0x48, 0x85,
-                                    0xF6};
-      const char mask_b[] = "xxx????xxxxxx";
-      hit = PatternScan(base, size, pat_b, mask_b);
+      const std::uint8_t pat_a[] = {0x48, 0x8B, 0x05, 0, 0, 0, 0, 0x48, 0x8B, 0x58, 0x38,
+                                    0x48, 0x85, 0xDB, 0x74, 0,    0xF6};
+      const char mask_a[] = "xxx????xxxxxxxx?x";
+      hit = PatternScan(base, size, pat_a, mask_a);
     }
     if (!hit) {
       return 0;
@@ -65,6 +66,7 @@ bool ReadFlagScholar(std::uintptr_t flags_base, std::uint32_t event_flag_id, boo
         if (!bitfield) {
           return false;
         }
+// Also accept SoulMemory's equality check (byte sometimes holds a single bit).
         const auto flag_bit = ReadT<std::uint8_t>(bitfield + category2);
         const auto shift = static_cast<int>(0x7 - (event_flag_id % 10000u & 0x7));
         const auto mask = static_cast<std::uint8_t>(1u << shift);
@@ -96,6 +98,7 @@ bool ReadFlagVanilla(std::uintptr_t flags_base, std::uint32_t event_flag_id, boo
         if (!bitfield) {
           return false;
         }
+// Also accept SoulMemory's equality check (byte sometimes holds a single bit).
         const auto flag_bit = ReadT<std::uint8_t>(bitfield + category2);
         const auto shift = static_cast<int>(0x7 - (event_flag_id % 10000u & 0x7));
         const auto mask = static_cast<std::uint8_t>(1u << shift);
@@ -114,10 +117,18 @@ bool ReadFlagVanilla(std::uintptr_t flags_base, std::uint32_t event_flag_id, boo
 bool EventFlags::Resolve() {
   const auto slot = ScanGameManagerImpSlot();
   if (!slot) {
-    LogWrite("event_flags: GameManagerImp AOB not found");
+    static bool logged_aob = false;
+    if (!logged_aob) {
+      logged_aob = true;
+      LogWrite("event_flags: GameManagerImp AOB not found");
+    }
+    ready_ = false;
     return false;
   }
 
+  // SoulMemory AddPointer resolves every hop including the last into the
+  // EventFlagManager *object*. ResolveChain leaves the last as an address, so
+  // deref once more.
   if (IsScholar()) {
     const int chain[] = {0, 0x70, 0x20};
     flags_base_ = ResolveChain(slot, chain, 3);
@@ -125,22 +136,42 @@ bool EventFlags::Resolve() {
     const int chain[] = {0, 0, 0x44, 0x10};
     flags_base_ = ResolveChain(slot, chain, 4);
   }
+  if (flags_base_) {
+    flags_base_ = ReadPtr(flags_base_);
+  }
 
   if (!flags_base_) {
-    LogWrite("event_flags: EventManager chain failed");
+    static bool logged_chain = false;
+    if (!logged_chain) {
+      logged_chain = true;
+      LogWrite("event_flags: EventManager chain not ready yet (will retry in-game)");
+    }
+    ready_ = false;
     return false;
   }
 
-  char buf[80];
-  snprintf(buf, sizeof(buf), "event_flags: base=0x%llX (%s)",
-           static_cast<unsigned long long>(flags_base_), IsScholar() ? "scholar" : "vanilla");
+  bool sample = false;
+  const bool ok = IsScholar() ? ReadFlagScholar(flags_base_, 100971, &sample)
+                              : ReadFlagVanilla(flags_base_, 100971, &sample);
+  char buf[120];
+  snprintf(buf, sizeof(buf), "event_flags: base=0x%llX (%s) sample_100971=%s readable=%d",
+           static_cast<unsigned long long>(flags_base_), IsScholar() ? "scholar" : "vanilla",
+           sample ? "on" : "off", ok ? 1 : 0);
   LogWrite(buf);
+  ready_ = true;
   return true;
 }
 
 bool EventFlags::Init() {
   ready_ = Resolve();
   return ready_;
+}
+
+bool EventFlags::EnsureReady() {
+  if (ready_ && flags_base_) {
+    return true;
+  }
+  return Resolve();
 }
 
 void EventFlags::Shutdown() {

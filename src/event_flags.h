@@ -9,6 +9,8 @@ class EventFlags {
   bool Init();
   void Shutdown();
   bool Ready() const { return ready_; }
+  // Re-resolve after title → in-game (EventManager is often null on the menu).
+  bool EnsureReady();
   bool ReadFlag(std::int32_t flag_id, bool* out_value) const;
 
  private:

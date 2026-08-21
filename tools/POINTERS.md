@@ -42,14 +42,35 @@ SoulMemory walk (not DSR 8-digit packing).
 
 ## Boss cheer (LoadedEnemiesTable)
 
-DS2 has no DSR-style EMEVD “display boss bar” flags. v1 cheers when a known boss **chr id** appears in `LoadedEnemiesTable` (`*(BaseA+0x18)` SotFS) while that boss’s defeat flag is still off. Chr ids from soulsmodding (c3096 Last Giant, c3180 Pursuer, …). Vanilla table pointer is not in META — cheer may be silent on vanilla until CE confirms a HUD bar flag.
+DS2 has no DSR-style EMEVD “display boss bar” flags. v1 cheers when a known boss **chr id** appears in `LoadedEnemiesTable` (`*(BaseA+0x18)` SotFS; same hop attempted on vanilla) while that boss’s defeat flag is still off. Chr id field is probed at several struct offsets (`+0x28`, `+0x14`, …) for 32-bit layout differences. Vanilla table is not in META — if cheer stays silent, CE the HUD boss gauge / fog bit and record it here.
 
-## Area wipe
+## Area wipe (PlaceName title card)
 
-- Prefer `MapManager = *(BaseA+0x38)` (SotFS 1.03) dword at `+0x8` as current map id
-- Fallback: EventManager last-bonfire area (`+0x164` SotFS / `+0xB4` vanilla) — fires on rest/warp more than walk-ins
-- Scene wipe = rising edge of `area_id` while in gameplay and not loading
-- True HUD banner byte still needs a CE session (document here when found)
+Map ids and FMOD zone SE are **not** the title card.
+
+**Current approach (SotFS 1.03):**
+- Hook `FeSubStateTitleInformation` vtable `[1]` activate (`RVA 0xFF570`) — first PlaceName
+- Capture instance; poll `+0x10` for idle `{0,-1,4}` → show-start `{1,2,5}` (Majula etc.)
+
+Log: `area_title: state A→B` / `PlaceName show` then scene_wipe.
+
+## Event flags / boss counters
+
+- SoulMemory chains: EventFlagManager `BaseA → +0x70 → +0x20`, boss kills `→ +0x70 → +0x28 → +0x20 → +0x8`.
+- Prefer SoulMemory GameManagerImp AOB `48 8B 35 … 48 8B E9 48 85 F6`.
+- EventManager is often **null on the title screen** — resolve again once `player_valid`.
+
+## Boss applause
+
+- Primary: 6-digit defeat event flags (SoulMemory walk). **Important:** resolve EventFlagManager with a final pointer deref (SoulMemory `AddPointer` convention).
+- Backup: SoulMemory boss kill-count array  
+  - SotFS: `BaseA → +0x70 → +0x28 → +0x20 → +0x8`  
+  - Vanilla: `BaseA → +0 → +0x44 → +0x14 → +0x10 → +0x4`  
+  - `BossType` byte offsets in SoulMemory `BossType.cs` (Last Giant `0x7c`, …)
+
+## Player anim (fail laughs)
+
+Probe chains under `PlayerCtrl` (`+0xB8 → +0x8 → +0x20 → +0xC` and nearby). With `laugh_on_empty_flask=true`, every anim change is logged as `probe: anim A→B` until TAE IDs are pinned.
 
 ## ItemGive (ooh)
 

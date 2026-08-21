@@ -19,9 +19,13 @@ struct GameSnapshot {
 
   std::vector<std::int32_t> defeat_flags_on;
   std::vector<std::int32_t> cheer_chr_ids;
+  // SoulMemory BossType kill counts that are > 0 (for applause rising-edge backup).
+  std::vector<std::int32_t> boss_kills_on;
 
+  // Map / zone id suitable for area-title wipe (NOT last-bonfire area).
   bool area_valid = false;
   std::int32_t area_id = 0;
+  bool area_is_map_manager = false;
 
   bool on_title_screen = false;
 
@@ -40,6 +44,7 @@ class GameState {
 
   std::uintptr_t base_a_slot_ = 0;
   std::uintptr_t load_state_slot_ = 0;
+  std::uintptr_t boss_counters_ = 0;
   bool ready_ = false;
 };
 

@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "area_title_hooks.h"
 #include "config.h"
 #include "credit.h"
 #include "dinput8_proxy.h"
@@ -113,6 +114,9 @@ DWORD WINAPI WorkerMain(LPVOID) {
   } else {
     LogWrite("fmod: not ready yet — will retry while polling");
   }
+  if (!AreaTitleHooksInit()) {
+    LogWrite("area_title: TitleInformation hook not ready — will retry while polling");
+  }
 
   EventDetector events;
   const DWORD poll_ms = static_cast<DWORD>(1000 / (cfg.poll_hz > 0 ? cfg.poll_hz : 20));
@@ -124,7 +128,12 @@ DWORD WINAPI WorkerMain(LPVOID) {
     const GameSnapshot snap = game.Read();
 
     float sfx = 1.f;
-    const bool sfx_ok = FmodTryGetSfxVolume(&sfx);
+    bool sfx_ok = FmodTryGetSfxVolume(&sfx);
+    if (!sfx_ok) {
+      FmodVolumeInit();
+      sfx_ok = FmodTryGetSfxVolume(&sfx);
+    }
+    AreaTitleHooksInit();
     if (sfx_ok) {
       audio.SetGameSfxVolume(sfx);
       if (std::fabs(sfx - last_logged_sfx) > 0.01f) {
@@ -144,6 +153,8 @@ DWORD WINAPI WorkerMain(LPVOID) {
       } else {
         snprintf(sfx_buf, sizeof(sfx_buf), "?");
       }
+      char area_buf[16];
+      snprintf(area_buf, sizeof(area_buf), "%X", static_cast<unsigned>(snap.area_id));
       LogWrite(std::string("worker: heartbeat in_game=") + std::to_string(snap.in_gameplay) +
                " title=" + std::to_string(snap.on_title_screen) +
                " loading=" + std::to_string(snap.is_loading) +
@@ -151,9 +162,8 @@ DWORD WINAPI WorkerMain(LPVOID) {
                " player_valid=" + std::to_string(snap.player_valid) +
                " hp=" + std::to_string(snap.player_hp) + "/" + std::to_string(snap.player_max_hp) +
                " boss_fight=" + std::to_string(snap.boss_fight_active) +
-               " defeat=" + std::to_string(snap.boss_defeat_flag) +
-               " area=" + std::to_string(snap.area_id) + " sfx=" + sfx_buf +
-               " anim=" + std::to_string(snap.current_anim));
+               " defeat=" + std::to_string(snap.boss_defeat_flag) + " area=0x" + area_buf +
+               " sfx=" + sfx_buf + " anim=" + std::to_string(snap.current_anim));
     }
     events.Update(snap, cfg, audio);
     if (WaitForSingleObject(g_stop_event, poll_ms) != WAIT_TIMEOUT) {
@@ -163,6 +173,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
 
   CreditShutdown();
   ItemHooksShutdown();
+  AreaTitleHooksShutdown();
   game.Shutdown();
   audio.Shutdown();
   FmodVolumeShutdown();

@@ -2,6 +2,8 @@
 
 Sitcom canned-audience overlay for **Dark Souls II** and **Dark Souls II: Scholar of the First Sin** (PC).
 
+## CURRENTLY ON HIATUS AND NON-FUNCTIONAL. WILL BE LOOKED AT AGAIN AFTER DS3.
+
 Plays local WAV clips when:
 
 - the player takes damage or dies (laughter; random among `laugh*.wav`)
