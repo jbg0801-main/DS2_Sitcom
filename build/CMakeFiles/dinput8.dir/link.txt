@@ -1,0 +1,3 @@
+/usr/sbin/cmake -E rm -f CMakeFiles/dinput8.dir/objects.a
+/usr/sbin/x86_64-w64-mingw32-ar qc CMakeFiles/dinput8.dir/objects.a @CMakeFiles/dinput8.dir/objects1.rsp
+/usr/sbin/x86_64-w64-mingw32-g++ -shared /src/src/exports.def -static -static-libgcc -static-libstdc++ -o dinput8.dll -Wl,--out-implib,libdinput8.dll.a -Wl,--major-image-version,0,--minor-image-version,0 -Wl,--whole-archive CMakeFiles/dinput8.dir/objects.a -Wl,--no-whole-archive @CMakeFiles/dinput8.dir/linkLibs.rsp
