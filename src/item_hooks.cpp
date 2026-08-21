@@ -1,22 +1,24 @@
 #include "item_hooks.h"
 
+#include "ds2_flavor.h"
 #include "log.h"
+#include "mem.h"
 
 #include <windows.h>
 #include <psapi.h>
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 namespace sitcom {
 namespace {
 
-// DSR-Gadget ItemGetAOB — prologue is exactly 14 bytes of complete instructions.
-// Injected call convention (from GetItem.txt):
-//   RCX = inventory*, RDX = category, R8 = item id, R9 = quantity
-//
-// Naked stub preserves regs, filters estus refills (bonfire rest), then continues.
+// DS2S-META ITEMID: Estus flask (filled/empty) and Sublime Bone Dust (rest upgrades).
+constexpr int kEstus = 0x0395E478;
+constexpr int kEstusEmpty = 0x0395E860;
+constexpr int kBoneDust = 0x039B8DB0;
 
 std::atomic<int> g_acquired{0};
 std::atomic<int> g_last_item_id{0};
@@ -27,31 +29,47 @@ struct InlineHook {
   void* target = nullptr;
   uint8_t* trampoline = nullptr;
   uint8_t stolen[16]{};
+  SIZE_T patch_size = 0;
   bool active = false;
 };
 
 InlineHook g_hook;
 
-bool IsEstusFlaskId(int id) {
-  // MysteryGoods: 200–215 empty/filled Estus Flask through +7.
-  return id >= 200 && id <= 215;
+bool IsRestockId(int id) {
+  return id == kEstus || id == kEstusEmpty || id == kBoneDust;
+}
+
+bool LooksLikeItemId(int id) {
+  const auto u = static_cast<unsigned>(id);
+  return u >= 0x000F0000u && u <= 0x04FFFFFFu;
 }
 
 extern "C" {
 void* g_item_get_continue = nullptr;
 
-void ItemGetNotify(int category, int id, int /*quantity*/) {
+void ItemGetNotify(int a, int b, int c, int d) {
+  int id = 0;
+  if (LooksLikeItemId(a)) {
+    id = a;
+  } else if (LooksLikeItemId(b)) {
+    id = b;
+  } else if (LooksLikeItemId(c)) {
+    id = c;
+  } else if (LooksLikeItemId(d)) {
+    id = d;
+  }
   g_last_item_id.store(id, std::memory_order_relaxed);
-  g_last_category.store(category, std::memory_order_relaxed);
-  // Bonfire rest (and some warps) re-grant Estus via ItemGet — not a pickup.
-  if (IsEstusFlaskId(id)) {
+  g_last_category.store(0, std::memory_order_relaxed);
+  if (IsRestockId(a) || IsRestockId(b) || IsRestockId(c) || IsRestockId(d)) {
     g_suppressed.fetch_add(1, std::memory_order_relaxed);
     return;
   }
-  g_acquired.fetch_add(1, std::memory_order_relaxed);
+  if (id != 0) {
+    g_acquired.fetch_add(1, std::memory_order_relaxed);
+  }
 }
 
-#if defined(__GNUC__)
+#if defined(__GNUC__) && defined(_WIN64)
 __attribute__((naked)) void HookedItemGetEntry() {
   __asm__ __volatile__(
       "push %%rax\n\t"
@@ -61,13 +79,9 @@ __attribute__((naked)) void HookedItemGetEntry() {
       "push %%r9\n\t"
       "push %%r10\n\t"
       "push %%r11\n\t"
-      "sub $0x20, %%rsp\n\t"
-      // MS x64 args still in rdx/r8/r9; reshuffle for ItemGetNotify(cat,id,qty).
-      "mov %%edx, %%ecx\n\t"
-      "mov %%r8d, %%edx\n\t"
-      "mov %%r9d, %%r8d\n\t"
+      "sub $0x28, %%rsp\n\t"
       "call ItemGetNotify\n\t"
-      "add $0x20, %%rsp\n\t"
+      "add $0x28, %%rsp\n\t"
       "pop %%r11\n\t"
       "pop %%r10\n\t"
       "pop %%r9\n\t"
@@ -80,47 +94,38 @@ __attribute__((naked)) void HookedItemGetEntry() {
       :
       :);
 }
+#elif defined(__GNUC__)
+__attribute__((naked)) void HookedItemGetEntry() {
+  __asm__ __volatile__(
+      "pushal\n\t"
+      "movl 48(%%esp), %%ebx\n\t"
+      "movl 44(%%esp), %%edx\n\t"
+      "movl 40(%%esp), %%ecx\n\t"
+      "movl 36(%%esp), %%eax\n\t"
+      "pushl %%ebx\n\t"
+      "pushl %%edx\n\t"
+      "pushl %%ecx\n\t"
+      "pushl %%eax\n\t"
+      "call _ItemGetNotify\n\t"
+      "addl $16, %%esp\n\t"
+      "popal\n\t"
+      "jmp *_g_item_get_continue\n\t"
+      :
+      :
+      :);
+}
 #else
-#error "ItemGet naked hook requires GCC/MinGW"
+#error "ItemGive naked hook requires GCC/MinGW"
 #endif
 }  // extern "C"
 
-bool IsExecutable(const void* p) {
-  if (!p) {
-    return false;
-  }
-  MEMORY_BASIC_INFORMATION mbi{};
-  if (!VirtualQuery(p, &mbi, sizeof(mbi))) {
-    return false;
-  }
-  if (mbi.State != MEM_COMMIT) {
-    return false;
-  }
-  const DWORD prot = mbi.Protect & 0xFF;
-  return prot == PAGE_EXECUTE || prot == PAGE_EXECUTE_READ || prot == PAGE_EXECUTE_READWRITE ||
-         prot == PAGE_EXECUTE_WRITECOPY;
-}
-
-std::uintptr_t PatternScan(std::uintptr_t base, std::size_t size, const std::uint8_t* pat,
-                           const char* mask) {
-  const std::size_t len = std::strlen(mask);
-  for (std::size_t i = 0; i + len <= size; ++i) {
-    bool ok = true;
-    for (std::size_t j = 0; j < len; ++j) {
-      if (mask[j] == 'x' && *reinterpret_cast<const std::uint8_t*>(base + i + j) != pat[j]) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) {
-      return base + i;
-    }
-  }
-  return 0;
-}
+#if defined(_WIN64)
+constexpr SIZE_T kPatch = 14;
+#else
+constexpr SIZE_T kPatch = 6;
+#endif
 
 bool InstallHook(void* target) {
-  constexpr SIZE_T kPatch = 14;
   if (!target || !IsExecutable(target)) {
     return false;
   }
@@ -130,14 +135,23 @@ bool InstallHook(void* target) {
     return false;
   }
   g_hook.target = target;
+  g_hook.patch_size = kPatch;
   std::memcpy(g_hook.stolen, target, kPatch);
   std::memcpy(g_hook.trampoline, g_hook.stolen, kPatch);
+
+#if defined(_WIN64)
   g_hook.trampoline[kPatch] = 0x48;
   g_hook.trampoline[kPatch + 1] = 0xB8;
   const uint64_t ret = reinterpret_cast<uint64_t>(static_cast<uint8_t*>(target) + kPatch);
   std::memcpy(g_hook.trampoline + kPatch + 2, &ret, 8);
   g_hook.trampoline[kPatch + 10] = 0xFF;
   g_hook.trampoline[kPatch + 11] = 0xE0;
+#else
+  g_hook.trampoline[kPatch] = 0xE9;
+  const uint32_t rel_back = static_cast<uint32_t>(
+      reinterpret_cast<uint8_t*>(target) + kPatch - (g_hook.trampoline + kPatch + 5));
+  std::memcpy(g_hook.trampoline + kPatch + 1, &rel_back, 4);
+#endif
   g_item_get_continue = g_hook.trampoline;
 
   DWORD old = 0;
@@ -148,6 +162,7 @@ bool InstallHook(void* target) {
     return false;
   }
   auto* p = static_cast<uint8_t*>(target);
+#if defined(_WIN64)
   p[0] = 0x48;
   p[1] = 0xB8;
   const uint64_t d = reinterpret_cast<uint64_t>(&HookedItemGetEntry);
@@ -156,6 +171,13 @@ bool InstallHook(void* target) {
   p[11] = 0xE0;
   p[12] = 0x90;
   p[13] = 0x90;
+#else
+  p[0] = 0xE9;
+  const uint32_t rel = static_cast<uint32_t>(reinterpret_cast<uint8_t*>(&HookedItemGetEntry) -
+                                             (p + 5));
+  std::memcpy(p + 1, &rel, 4);
+  p[5] = 0x90;
+#endif
   VirtualProtect(target, kPatch, old, &old);
   FlushInstructionCache(GetCurrentProcess(), target, kPatch);
   g_hook.active = true;
@@ -166,12 +188,11 @@ void RemoveHook() {
   if (!g_hook.active || !g_hook.target) {
     return;
   }
-  constexpr SIZE_T kPatch = 14;
   DWORD old = 0;
-  if (VirtualProtect(g_hook.target, kPatch, PAGE_EXECUTE_READWRITE, &old)) {
-    std::memcpy(g_hook.target, g_hook.stolen, kPatch);
-    VirtualProtect(g_hook.target, kPatch, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), g_hook.target, kPatch);
+  if (VirtualProtect(g_hook.target, g_hook.patch_size, PAGE_EXECUTE_READWRITE, &old)) {
+    std::memcpy(g_hook.target, g_hook.stolen, g_hook.patch_size);
+    VirtualProtect(g_hook.target, g_hook.patch_size, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), g_hook.target, g_hook.patch_size);
   }
   if (g_hook.trampoline) {
     VirtualFree(g_hook.trampoline, 0, MEM_RELEASE);
@@ -181,38 +202,45 @@ void RemoveHook() {
   g_hook.active = false;
 }
 
+std::uintptr_t ScanItemGive() {
+  const auto base = GameBase();
+  const auto size = GameSize();
+  if (!base) {
+    return 0;
+  }
+  if (IsScholar()) {
+    const std::uint8_t pat[] = {0x48, 0x89, 0x5C, 0x24, 0x18, 0x56, 0x57, 0x41, 0x56, 0x48,
+                                0x83, 0xEC, 0x30, 0x45, 0x8B, 0xF1, 0x41};
+    const char mask[] = "xxxxxxxxxxxxxxxxx";
+    return PatternScan(base, size, pat, mask);
+  }
+  const std::uint8_t pat[] = {0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0x53, 0x8B, 0x5D, 0x0C,
+                              0x56, 0x8B, 0x75, 0x08, 0x57, 0x53, 0x56, 0x8B, 0xF9};
+  const char mask[] = "xxxxxxxxxxxxxxxxxxx";
+  return PatternScan(base, size, pat, mask);
+}
+
 }  // namespace
 
 bool ItemHooksInit() {
   if (g_hook.active) {
     return true;
   }
-  HMODULE game = GetModuleHandleW(L"DarkSoulsRemastered.exe");
-  if (!game) {
+  if (!GameModule() && !DetectFlavor()) {
+    LogWrite("item_hooks: game module not ready");
     return false;
   }
-  MODULEINFO info{};
-  if (!GetModuleInformation(GetCurrentProcess(), game, &info, sizeof(info))) {
-    return false;
-  }
-  const auto base = reinterpret_cast<std::uintptr_t>(info.lpBaseOfDll);
-  const auto size = static_cast<std::size_t>(info.SizeOfImage);
-
-  const std::uint8_t pat[] = {0x48, 0x89, 0x5C, 0x24, 0x18, 0x89, 0x54, 0x24, 0x10, 0x55,
-                              0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57,
-                              0x48, 0x8D, 0x6C, 0x24, 0xF9};
-  const char mask[] = "xxxxxxxxxxxxxxxxxxxxxxxxx";
-  const auto hit = PatternScan(base, size, pat, mask);
+  const auto hit = ScanItemGive();
   if (!hit) {
-    LogWrite("item_hooks: ItemGet AOB not found (ooh disabled)");
+    LogWrite("item_hooks: ItemGive AOB not found (ooh via anim only)");
     return false;
   }
   if (!InstallHook(reinterpret_cast<void*>(hit))) {
-    LogWrite("item_hooks: failed to hook ItemGet");
+    LogWrite("item_hooks: failed to hook ItemGive");
     return false;
   }
   char buf[96];
-  snprintf(buf, sizeof(buf), "item_hooks: ItemGet hooked @ 0x%llX (filter estus 200-215)",
+  snprintf(buf, sizeof(buf), "item_hooks: ItemGive hooked @ 0x%llX",
            static_cast<unsigned long long>(hit));
   LogWrite(buf);
   return true;
@@ -224,20 +252,9 @@ void ItemHooksShutdown() {
   g_suppressed.store(0, std::memory_order_relaxed);
 }
 
-int ItemHooksConsumeAcquired() {
-  return g_acquired.exchange(0, std::memory_order_relaxed);
-}
-
-int ItemHooksConsumeSuppressed() {
-  return g_suppressed.exchange(0, std::memory_order_relaxed);
-}
-
-int ItemHooksLastItemId() {
-  return g_last_item_id.load(std::memory_order_relaxed);
-}
-
-int ItemHooksLastCategory() {
-  return g_last_category.load(std::memory_order_relaxed);
-}
+int ItemHooksConsumeAcquired() { return g_acquired.exchange(0, std::memory_order_relaxed); }
+int ItemHooksConsumeSuppressed() { return g_suppressed.exchange(0, std::memory_order_relaxed); }
+int ItemHooksLastItemId() { return g_last_item_id.load(std::memory_order_relaxed); }
+int ItemHooksLastCategory() { return g_last_category.load(std::memory_order_relaxed); }
 
 }  // namespace sitcom

@@ -25,7 +25,13 @@ using EventCategory = void;
 
 using FnGetCategory = FmodResult(__cdecl*)(EventSystem*, const char*, EventCategory**);
 using FnGetVolume = FmodResult(__cdecl*)(EventCategory*, float*);
+#if defined(_WIN64)
 using FnCppUpdate = FmodResult(__cdecl*)(EventSystem* self);
+constexpr SIZE_T kUpdatePatch = 14;
+#else
+using FnCppUpdate = FmodResult(__thiscall*)(EventSystem* self);
+constexpr SIZE_T kUpdatePatch = 5;
+#endif
 
 FnGetCategory g_get_category = nullptr;
 FnGetVolume g_get_volume = nullptr;
@@ -113,8 +119,11 @@ bool TryReadSe(EventSystem* es) {
   EventCategory* cat = nullptr;
   if (g_get_category(es, "SE", &cat) != 0 || !cat || !IsReadable(cat)) {
     cat = nullptr;
-    if (g_get_category(es, "master/SE", &cat) != 0 || !cat || !IsReadable(cat)) {
-      return false;
+    if (g_get_category(es, "SFX", &cat) != 0 || !cat || !IsReadable(cat)) {
+      cat = nullptr;
+      if (g_get_category(es, "master/SE", &cat) != 0 || !cat || !IsReadable(cat)) {
+        return false;
+      }
     }
   }
   float vol = 1.f;
@@ -130,13 +139,13 @@ void RestoreUpdatePrologue() {
   if (!g_update_hook.active || !g_update_hook.target) {
     return;
   }
-  constexpr SIZE_T kPatch = 14;
   DWORD old = 0;
-  if (VirtualProtect(g_update_hook.target, kPatch, PAGE_EXECUTE_READWRITE, &old)) {
-    std::memcpy(g_update_hook.target, g_update_hook.stolen, kPatch);
-    VirtualProtect(g_update_hook.target, kPatch, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), g_update_hook.target, kPatch);
+  if (!VirtualProtect(g_update_hook.target, kUpdatePatch, PAGE_EXECUTE_READWRITE, &old)) {
+    return;
   }
+  std::memcpy(g_update_hook.target, g_update_hook.stolen, kUpdatePatch);
+  VirtualProtect(g_update_hook.target, kUpdatePatch, old, &old);
+  FlushInstructionCache(GetCurrentProcess(), g_update_hook.target, kUpdatePatch);
   if (g_update_hook.trampoline) {
     VirtualFree(g_update_hook.trampoline, 0, MEM_RELEASE);
     g_update_hook.trampoline = nullptr;
@@ -145,7 +154,11 @@ void RestoreUpdatePrologue() {
   LogWrite("fmod: one-shot update hook removed");
 }
 
+#if defined(_WIN64)
 FmodResult __cdecl HookedCppUpdate(EventSystem* self) {
+#else
+FmodResult __thiscall HookedCppUpdate(EventSystem* self) {
+#endif
   LogWrite(self ? "fmod: one-shot update capture" : "fmod: one-shot update (null this)");
   if (self) {
     if (TryReadSe(self)) {
@@ -166,7 +179,6 @@ FmodResult __cdecl HookedCppUpdate(EventSystem* self) {
 }
 
 bool InstallOneShotUpdateHook(void* target) {
-  constexpr SIZE_T kPatch = 14;
   if (!target || !IsExecutable(target)) {
     return false;
   }
@@ -176,14 +188,15 @@ bool InstallOneShotUpdateHook(void* target) {
   }
 
   g_update_hook.target = target;
-  std::memcpy(g_update_hook.stolen, target, kPatch);
+  std::memcpy(g_update_hook.stolen, target, kUpdatePatch);
   g_real_update = reinterpret_cast<FnCppUpdate>(target);
 
   DWORD old = 0;
-  if (!VirtualProtect(target, kPatch, PAGE_EXECUTE_READWRITE, &old)) {
+  if (!VirtualProtect(target, kUpdatePatch, PAGE_EXECUTE_READWRITE, &old)) {
     return false;
   }
   auto* p = static_cast<uint8_t*>(target);
+#if defined(_WIN64)
   p[0] = 0x48;
   p[1] = 0xB8;
   const uint64_t d = reinterpret_cast<uint64_t>(&HookedCppUpdate);
@@ -192,14 +205,31 @@ bool InstallOneShotUpdateHook(void* target) {
   p[11] = 0xE0;
   p[12] = 0x90;
   p[13] = 0x90;
-  VirtualProtect(target, kPatch, old, &old);
-  FlushInstructionCache(GetCurrentProcess(), target, kPatch);
+#else
+  p[0] = 0xE9;
+  const uint32_t rel =
+      static_cast<uint32_t>(reinterpret_cast<uint8_t*>(&HookedCppUpdate) - (p + 5));
+  std::memcpy(p + 1, &rel, 4);
+#endif
+  VirtualProtect(target, kUpdatePatch, old, &old);
+  FlushInstructionCache(GetCurrentProcess(), target, kUpdatePatch);
   g_update_hook.active = true;
   return true;
 }
 
 bool ResolveAndHook() {
+#if defined(_WIN64)
   HMODULE fmod = GetModuleHandleW(L"fmod_event64.dll");
+  const char* update_a = "?update@EventSystem@FMOD@@QEAA?AW4FMOD_RESULT@@XZ";
+  const char* update_b = "?update@EventSystemI@FMOD@@UEAA?AW4FMOD_RESULT@@XZ";
+#else
+  HMODULE fmod = GetModuleHandleW(L"fmod_event.dll");
+  if (!fmod) {
+    fmod = GetModuleHandleW(L"fmodex.dll");
+  }
+  const char* update_a = "?update@EventSystem@FMOD@@QAE?AW4FMOD_RESULT@@XZ";
+  const char* update_b = "?update@EventSystemI@FMOD@@UAE?AW4FMOD_RESULT@@XZ";
+#endif
   if (!fmod) {
     return false;
   }
@@ -213,12 +243,9 @@ bool ResolveAndHook() {
     return false;
   }
 
-  // Export dump showed EventSystem::update (not EventSystemI). Prefer that.
-  void* update = reinterpret_cast<void*>(
-      GetProcAddress(fmod, "?update@EventSystem@FMOD@@QEAA?AW4FMOD_RESULT@@XZ"));
+  void* update = reinterpret_cast<void*>(GetProcAddress(fmod, update_a));
   if (!update) {
-    update = reinterpret_cast<void*>(
-        GetProcAddress(fmod, "?update@EventSystemI@FMOD@@UEAA?AW4FMOD_RESULT@@XZ"));
+    update = reinterpret_cast<void*>(GetProcAddress(fmod, update_b));
   }
   if (!update) {
     LogWrite("fmod: EventSystem::update export missing");
@@ -266,9 +293,15 @@ bool FmodVolumeInit() {
   if (g_ready.load(std::memory_order_relaxed) || g_captured.load(std::memory_order_relaxed)) {
     return g_ready.load(std::memory_order_relaxed) || g_se_valid.load(std::memory_order_relaxed);
   }
+#if defined(_WIN64)
   if (!GetModuleHandleW(L"fmod_event64.dll")) {
     return false;
   }
+#else
+  if (!GetModuleHandleW(L"fmod_event.dll") && !GetModuleHandleW(L"fmodex.dll")) {
+    return false;
+  }
+#endif
   return ResolveAndHook();
 }
 

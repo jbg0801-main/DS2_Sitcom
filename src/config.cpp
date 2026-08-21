@@ -102,14 +102,7 @@ bool LoadConfig(const std::wstring& ini_path, Config& out) {
   cfg.cheer_on_boss_bar = ReadBool(L"events", L"cheer_on_boss_bar", true, ini_path);
   cfg.applause_on_boss_death = ReadBool(L"events", L"applause_on_boss_death", true, ini_path);
   cfg.wipe_on_area_title = ReadBool(L"events", L"wipe_on_area_title", true, ini_path);
-
-  cfg.boo_on_sif_kill = ReadBool(L"events", L"boo_on_sif_kill", true, ini_path);
   cfg.ooh_on_item_get = ReadBool(L"events", L"ooh_on_item_get", true, ini_path);
-  cfg.trombone_on_pinwheel_death =
-      ReadBool(L"events", L"trombone_on_pinwheel_death", true, ini_path);
-  cfg.boc_death_on_bed_of_chaos =
-      ReadBool(L"events", L"boc_death_on_bed_of_chaos", true, ini_path);
-  cfg.bonk_on_smough_hit = ReadBool(L"events", L"bonk_on_smough_hit", true, ini_path);
 
   cfg.laugh_on_empty_flask = ReadBool(L"events", L"laugh_on_empty_flask", true, ini_path);
   cfg.laugh_on_locked_door = ReadBool(L"events", L"laugh_on_locked_door", true, ini_path);
@@ -118,7 +111,6 @@ bool LoadConfig(const std::wstring& ini_path, Config& out) {
 
   cfg.laugh_hit_seconds = ReadFloat(L"cooldowns", L"laugh_hit_seconds", 1.5f, ini_path);
   cfg.ooh_cooldown_seconds = ReadFloat(L"cooldowns", L"ooh_cooldown_seconds", 0.75f, ini_path);
-  cfg.bonk_min_damage_frac = ReadFloat(L"cooldowns", L"bonk_min_damage_frac", 0.18f, ini_path);
   cfg.sounds_dir = ReadString(L"paths", L"sounds_dir", "sounds", ini_path);
 
   out = cfg;

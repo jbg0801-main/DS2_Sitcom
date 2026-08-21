@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(DSR_Sitcom LANGUAGES CXX)
+project(DS2_Sitcom LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,6 +15,8 @@ add_library(dinput8 SHARED
   src/credit.cpp
   src/fmod_volume.cpp
   src/item_hooks.cpp
+  src/mem.cpp
+  src/ds2_flavor.cpp
   src/event_flags.cpp
   src/game_state.cpp
   src/events.cpp
@@ -39,9 +41,14 @@ target_link_libraries(dinput8 PRIVATE
   psapi
   user32
   gdi32
-  d3d11
-  dxgi
 )
+
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+  target_link_libraries(dinput8 PRIVATE d3d11 dxgi)
+else()
+  target_link_libraries(dinput8 PRIVATE d3d9)
+  target_link_options(dinput8 PRIVATE -Wl,--enable-stdcall-fixup)
+endif()
 
 # Fully static so players don't need MinGW runtime DLLs next to the game.
 target_link_options(dinput8 PRIVATE
@@ -57,7 +64,6 @@ set_target_properties(dinput8 PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
 
-# Copy sitcom/ next to the built DLL for local testing / packaging.
 add_custom_command(TARGET dinput8 POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     "${CMAKE_SOURCE_DIR}/sitcom"

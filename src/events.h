@@ -19,8 +19,6 @@ class EventDetector {
   std::uint64_t last_laugh_hit_ms_ = 0;
   std::uint64_t last_ooh_ms_ = 0;
   std::uint64_t last_fail_laugh_ms_ = 0;
-  bool applause_armed_ = false;
-  std::int32_t armed_defeat_flag_ = 0;
   bool flags_seeded_ = false;
   std::uint64_t gameplay_seeded_ms_ = 0;
 };

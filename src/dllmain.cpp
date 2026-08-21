@@ -5,6 +5,7 @@
 #include "events.h"
 #include "fmod_volume.h"
 #include "game_state.h"
+#include "ds2_flavor.h"
 #include "item_hooks.h"
 #include "log.h"
 #include "paths.h"
@@ -99,7 +100,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
       return 0;
     }
   }
-  LogWrite("worker: GameState ready");
+  LogWrite(std::string("worker: GameState ready (") + VersionName() + ")");
 
   ItemHooksInit();
 
@@ -145,16 +146,14 @@ DWORD WINAPI WorkerMain(LPVOID) {
       }
       LogWrite(std::string("worker: heartbeat in_game=") + std::to_string(snap.in_gameplay) +
                " title=" + std::to_string(snap.on_title_screen) +
+               " loading=" + std::to_string(snap.is_loading) +
+               " gs=" + std::to_string(snap.game_state) +
                " player_valid=" + std::to_string(snap.player_valid) +
                " hp=" + std::to_string(snap.player_hp) + "/" + std::to_string(snap.player_max_hp) +
                " boss_fight=" + std::to_string(snap.boss_fight_active) +
-               " cheer=" + std::to_string(snap.boss_cheer_flag) +
-               " banner=" + std::to_string(snap.banner_message) + " sfx=" + sfx_buf +
-               " area=" + std::to_string(snap.area_number) + "/" +
-               std::to_string(snap.world_number) +
-               " anim=" + std::to_string(snap.current_anim) +
-               " stay=" + std::to_string(snap.stay_anim_upper) + "/" +
-               std::to_string(snap.stay_anim_lower));
+               " defeat=" + std::to_string(snap.boss_defeat_flag) +
+               " area=" + std::to_string(snap.area_id) + " sfx=" + sfx_buf +
+               " anim=" + std::to_string(snap.current_anim));
     }
     events.Update(snap, cfg, audio);
     if (WaitForSingleObject(g_stop_event, poll_ms) != WAIT_TIMEOUT) {

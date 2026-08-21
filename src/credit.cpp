@@ -3,14 +3,21 @@
 #include "log.h"
 
 #include <windows.h>
+
+#if defined(_WIN64)
 #include <d3d11.h>
 #include <dxgi.h>
+#else
+#include <d3d9.h>
+#endif
 
 #include <atomic>
 #include <cstring>
 #include <cwchar>
 #include <mutex>
 #include <vector>
+
+#if defined(_WIN64)
 
 namespace sitcom {
 namespace {
@@ -502,3 +509,206 @@ void CreditShutdown() {
 }
 
 }  // namespace sitcom
+
+#else  // 32-bit DX9 vanilla
+
+namespace sitcom {
+namespace {
+
+constexpr wchar_t kCreditTitle[] = L"Sitcom mod by jbg0801 2026";
+constexpr wchar_t kCreditDedication[] =
+    L"This mod is dedicated to my amazing mum. I won't have her for much longer, "
+    L"and I'll never get to tell her about my projects. I'll miss you mum. I love you, "
+    L"sleep well.";
+
+using EndSceneFn = HRESULT(__stdcall*)(IDirect3DDevice9*);
+EndSceneFn g_orig_endscene = nullptr;
+void** g_endscene_slot = nullptr;
+EndSceneFn g_endscene_backup = nullptr;
+
+std::atomic<bool> g_want_credit{false};
+std::atomic<bool> g_hooked{false};
+std::once_flag g_hook_once;
+bool g_logged_draw = false;
+
+struct EnumCtx {
+  DWORD pid;
+  HWND best;
+  int best_area;
+};
+
+BOOL CALLBACK EnumGameWindows(HWND hwnd, LPARAM lp) {
+  auto* c = reinterpret_cast<EnumCtx*>(lp);
+  DWORD pid = 0;
+  GetWindowThreadProcessId(hwnd, &pid);
+  if (pid != c->pid || !IsWindowVisible(hwnd)) {
+    return TRUE;
+  }
+  RECT rc{};
+  if (!GetClientRect(hwnd, &rc)) {
+    return TRUE;
+  }
+  const int area = (rc.right - rc.left) * (rc.bottom - rc.top);
+  if (area > c->best_area) {
+    c->best_area = area;
+    c->best = hwnd;
+  }
+  return TRUE;
+}
+
+HWND FindGameWindow() {
+  EnumCtx ctx{GetCurrentProcessId(), nullptr, 0};
+  EnumWindows(EnumGameWindows, reinterpret_cast<LPARAM>(&ctx));
+  return ctx.best;
+}
+
+void DrawCreditD3D9(IDirect3DDevice9* device) {
+  if (!device) {
+    return;
+  }
+  IDirect3DSurface9* back = nullptr;
+  if (FAILED(device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &back)) || !back) {
+    return;
+  }
+  HDC hdc = nullptr;
+  if (FAILED(back->GetDC(&hdc)) || !hdc) {
+    back->Release();
+    return;
+  }
+
+  RECT rc{};
+  D3DSURFACE_DESC desc{};
+  back->GetDesc(&desc);
+  SetBkMode(hdc, TRANSPARENT);
+  SetTextColor(hdc, RGB(255, 255, 255));
+  HFONT title_font =
+      CreateFontW(-20, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+                  DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+  HFONT body_font =
+      CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+                  DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+  const int w = static_cast<int>(desc.Width);
+  const int pad = (w > 80) ? (w / 28) : 24;
+  RECT title_rc{pad, 12, w - pad, 40};
+  if (title_font) {
+    SelectObject(hdc, title_font);
+  }
+  DrawTextW(hdc, kCreditTitle, -1, &title_rc, DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX);
+  RECT body_rc{pad, 40, w - pad, 160};
+  if (body_font) {
+    SelectObject(hdc, body_font);
+  }
+  DrawTextW(hdc, kCreditDedication, -1, &body_rc, DT_WORDBREAK | DT_RIGHT | DT_NOPREFIX);
+  if (title_font) {
+    DeleteObject(title_font);
+  }
+  if (body_font) {
+    DeleteObject(body_font);
+  }
+  back->ReleaseDC(hdc);
+  back->Release();
+  (void)rc;
+  if (!g_logged_draw) {
+    LogWrite("credit: drew title credit via D3D9 EndScene");
+    g_logged_draw = true;
+  }
+}
+
+HRESULT __stdcall HookedEndScene(IDirect3DDevice9* device) {
+  if (g_want_credit.load(std::memory_order_relaxed) && device) {
+    DrawCreditD3D9(device);
+  }
+  return g_orig_endscene ? g_orig_endscene(device) : D3D_OK;
+}
+
+bool PatchEndSceneVtable(IDirect3DDevice9* device) {
+  if (!device) {
+    return false;
+  }
+  void** vtable = *reinterpret_cast<void***>(device);
+  void** slot = &vtable[42];  // IDirect3DDevice9::EndScene
+  DWORD old = 0;
+  if (!VirtualProtect(slot, sizeof(void*), PAGE_EXECUTE_READWRITE, &old)) {
+    return false;
+  }
+  g_endscene_slot = slot;
+  g_endscene_backup = reinterpret_cast<EndSceneFn>(vtable[42]);
+  g_orig_endscene = g_endscene_backup;
+  *slot = reinterpret_cast<void*>(&HookedEndScene);
+  VirtualProtect(slot, sizeof(void*), old, &old);
+  g_hooked.store(true);
+  LogWrite("credit: IDirect3DDevice9::EndScene hooked (D3D9 blit)");
+  return true;
+}
+
+bool InstallEndSceneHook() {
+  HWND hwnd = FindGameWindow();
+  if (!hwnd) {
+    hwnd = CreateWindowExW(0, L"STATIC", L"sitcom_dummy", WS_OVERLAPPED, 0, 0, 100, 100, nullptr,
+                           nullptr, GetModuleHandleW(nullptr), nullptr);
+  }
+  if (!hwnd) {
+    return false;
+  }
+  IDirect3D9* d3d = Direct3DCreate9(D3D_SDK_VERSION);
+  if (!d3d) {
+    LogWrite("credit: Direct3DCreate9 failed (EndScene hook skipped)");
+    return false;
+  }
+  D3DPRESENT_PARAMETERS pp{};
+  pp.Windowed = TRUE;
+  pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+  pp.hDeviceWindow = hwnd;
+  pp.BackBufferFormat = D3DFMT_UNKNOWN;
+  IDirect3DDevice9* dev = nullptr;
+  const HRESULT hr =
+      d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd,
+                        D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, &dev);
+  d3d->Release();
+  if (FAILED(hr) || !dev) {
+    LogWrite("credit: dummy D3D9 device failed (EndScene hook skipped)");
+    return false;
+  }
+  const bool ok = PatchEndSceneVtable(dev);
+  dev->Release();
+  return ok;
+}
+
+}  // namespace
+
+void CreditUpdate(bool on_title_screen) {
+  g_want_credit.store(on_title_screen, std::memory_order_relaxed);
+  if (!on_title_screen) {
+    return;
+  }
+  std::call_once(g_hook_once, []() {
+    for (int i = 0; i < 50 && !g_hooked.load(); ++i) {
+      if (InstallEndSceneHook()) {
+        break;
+      }
+      Sleep(100);
+    }
+    if (!g_hooked.load()) {
+      LogWrite("credit: EndScene hook never installed");
+    }
+  });
+}
+
+void CreditShutdown() {
+  g_want_credit.store(false);
+  if (g_hooked.load() && g_endscene_slot && g_endscene_backup) {
+    DWORD old = 0;
+    if (VirtualProtect(g_endscene_slot, sizeof(void*), PAGE_EXECUTE_READWRITE, &old)) {
+      *g_endscene_slot = reinterpret_cast<void*>(g_endscene_backup);
+      VirtualProtect(g_endscene_slot, sizeof(void*), old, &old);
+    }
+  }
+  g_hooked.store(false);
+}
+
+}  // namespace sitcom
+
+#endif
+

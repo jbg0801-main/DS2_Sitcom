@@ -1,0 +1,3 @@
+Placeholder / licensed clips live in this folder next to the DLL after build.
+
+Use laugh_*.wav, cheer_*.wav, applause_*.wav, ooh_*.wav, scene_wipe.wav.
