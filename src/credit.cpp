@@ -24,8 +24,8 @@ namespace {
 
 constexpr wchar_t kCreditTitle[] = L"Sitcom mod by jbg0801 2026";
 constexpr wchar_t kCreditDedication[] =
-    L"This mod is dedicated to my amazing mum. I won't have her for much longer, "
-    L"and I'll never get to tell her about my projects. I'll miss you mum. I love you, "
+    L"This mod is dedicated to my amazing mum. I lost her during development, "
+    L"and I'll never get to tell her about my projects. I miss you mum. I love you, "
     L"sleep well.";
 
 using PresentFn = HRESULT(__stdcall*)(IDXGISwapChain*, UINT, UINT);

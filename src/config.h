@@ -7,6 +7,8 @@ namespace sitcom {
 struct Config {
   bool enabled = true;
   bool log = false;
+  // Proton-friendly PlaceName diagnosis: extra UI hooks + field polls → sitcom.log
+  bool trace_area_title = false;
   int poll_hz = 20;
   float volume = 0.7f;
 

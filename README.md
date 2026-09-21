@@ -36,6 +36,8 @@ WINEDLLOVERRIDES="dinput8.dll=n,b" %command%
 
 Put WAVs in `sitcom/sounds/` using the names below. Tweak `sitcom/config.ini`. Set `log=true` to write `sitcom/sitcom.log`.
 
+PlaceName wipe follows `FeSceneMapName` text ids (see `tools/AREA_TITLE_TRACE.md`). Set `trace_area_title=true` only to diagnose.
+
 **Offline / single-player recommended.** Injected DLLs can interact badly with DS2’s online checks (softbans are poorly documented).
 
 ### Chain-loading other `dinput8` mods

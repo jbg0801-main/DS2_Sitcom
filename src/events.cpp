@@ -73,13 +73,13 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
 
   const auto now = static_cast<std::uint64_t>(GetTickCount64());
 
-  // PlaceName wipe first — hook/poll on TitleInformation state machine.
+  // PlaceName wipe — FeSceneMapName+0x1C place-id edges (Betwixt, Majula, …).
   AreaTitleHooksPoll();
   if (cfg.wipe_on_area_title && !snap.on_title_screen && AreaTitleHooksPending() > 0 &&
       (now - last_wipe_ms_) >= 1200) {
     const int titles = AreaTitleHooksConsume();
     if (titles > 0) {
-      LogWrite("event: area title card (TitleInformation x" + std::to_string(titles) + ")");
+      LogWrite("event: area title card (MapName+0x1C x" + std::to_string(titles) + ")");
       audio.Play(SoundCategory::SceneWipe);
       last_wipe_ms_ = now;
     }

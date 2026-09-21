@@ -60,6 +60,11 @@ DWORD WINAPI WorkerMain(LPVOID) {
     cfg.log = true;
     LogWrite("worker: config missing — using defaults with logging on");
   }
+  if (cfg.trace_area_title && !cfg.log) {
+    cfg.log = true;
+    LogWrite("worker: trace_area_title forces log=true");
+  }
+  AreaTitleHooksConfigure(cfg.trace_area_title);
   LogInit(log_path, cfg.log);
   if (cfg.log) {
     LogWrite("worker: logging enabled");
@@ -115,7 +120,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
     LogWrite("fmod: not ready yet — will retry while polling");
   }
   if (!AreaTitleHooksInit()) {
-    LogWrite("area_title: TitleInformation hook not ready — will retry while polling");
+    LogWrite("area_title: MapName PlaceName hook not ready — will retry while polling");
   }
 
   EventDetector events;

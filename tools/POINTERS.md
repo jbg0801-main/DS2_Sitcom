@@ -48,11 +48,13 @@ DS2 has no DSR-style EMEVD “display boss bar” flags. v1 cheers when a known 
 
 Map ids and FMOD zone SE are **not** the title card.
 
-**Current approach (SotFS 1.03):**
-- Hook `FeSubStateTitleInformation` vtable `[1]` activate (`RVA 0xFF570`) — first PlaceName
-- Capture instance; poll `+0x10` for idle `{0,-1,4}` → show-start `{1,2,5}` (Majula etc.)
+**Current approach (SotFS 1.03):** hook `FeSceneMapName` vt[4] (`RVA 0x684F0` / slot `0x10FA800`)
+to capture the instance; wipe when `+0x1C` changes to a PlaceName text id (`>= 100000`).
+Observed: Things Betwixt `100200`, Majula `100400`. Clear-to-`-1` (vt[3]) is ignored.
 
-Log: `area_title: state A→B` / `PlaceName show` then scene_wipe.
+`FeSubStateTitleInformation` activate is first-load-only — **not** Majula walks.
+
+**Diagnosis:** `trace_area_title=true` — see `tools/AREA_TITLE_TRACE.md`.
 
 ## Event flags / boss counters
 
