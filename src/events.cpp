@@ -1,6 +1,7 @@
 #include "events.h"
 
 #include "area_title_hooks.h"
+#include "boss_bar_hooks.h"
 #include "ds2_flavor.h"
 #include "estus_hooks.h"
 #include "item_hooks.h"
@@ -8,7 +9,6 @@
 
 #include <windows.h>
 
-#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <unordered_set>
@@ -66,8 +66,7 @@ void EventDetector::Reset() {
   deaths_at_load_start_ = 0;
   last_wipe_ms_ = 0;
   last_death_laugh_ms_ = 0;
-  cheer_latched_flags_.clear();
-  cheer_absent_since_ms_.clear();
+  cheer_latched_battle_id_ = 0;
 }
 
 void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& audio) {
@@ -79,6 +78,7 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
 
   // PlaceName wipe — FeSceneMapName+0x1C place-id edges (Betwixt, Majula, …).
   AreaTitleHooksPoll();
+  BossBarHooksPoll();
   if (cfg.wipe_on_area_title && !snap.on_title_screen && AreaTitleHooksPending() > 0 &&
       (now - last_wipe_ms_) >= 1200) {
     const int titles = AreaTitleHooksConsume();
@@ -133,8 +133,7 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
   if (snap.on_title_screen || snap.game_state == kGameStateMainMenu) {
     stable_area_id_ = 0;
     load_edge_armed_ = false;
-    cheer_latched_flags_.clear();
-    cheer_absent_since_ms_.clear();
+    cheer_latched_battle_id_ = 0;
   }
 
   // Death often drives HP negative in one poll, which clears player_valid / in_gameplay
@@ -194,65 +193,19 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
   }
 
   if (cfg.cheer_on_boss_bar) {
-    // After a PlaceName wipe, streaming reshuffles the enemy table — mute cheers briefly
-    // so Heide's card isn't underlaid by Dragonrider preload cheers.
-    const bool wipe_mute = (now - last_wipe_ms_) < 12000;
-
-    std::unordered_set<std::int32_t> present_flags;
-    const size_t n = std::min(snap.cheer_chr_ids.size(), snap.cheer_defeat_flags.size());
-    for (size_t i = 0; i < n; ++i) {
-      const auto chr = snap.cheer_chr_ids[i];
-      const auto flag = snap.cheer_defeat_flags[i];
-      present_flags.insert(flag);
-      cheer_absent_since_ms_.erase(flag);
-
-      if (wipe_mute || cheer_latched_flags_.count(flag) != 0) {
-        continue;
+    const auto id = snap.active_boss_battle_id;
+    if (id <= 0) {
+      cheer_latched_battle_id_ = 0;
+    } else if (cheer_latched_battle_id_ == 0) {
+      if (prev_.active_boss_battle_id <= 0) {
+        LogWrite("event: boss fight start battle_id=" + std::to_string(id));
+        audio.Play(SoundCategory::Cheer);
       }
-      // Rising edge vs previous snapshot (same flag not present last tick).
-      bool was_present = false;
-      const size_t pn = std::min(prev_.cheer_chr_ids.size(), prev_.cheer_defeat_flags.size());
-      for (size_t j = 0; j < pn; ++j) {
-        if (prev_.cheer_defeat_flags[j] == flag) {
-          was_present = true;
-          break;
-        }
-      }
-      if (was_present) {
-        continue;
-      }
-      LogWrite("event: boss fight start chr=" + std::to_string(chr) +
-               " defeat_flag=" + std::to_string(flag));
+      cheer_latched_battle_id_ = id;
+    } else if (id != cheer_latched_battle_id_) {
+      LogWrite("event: boss fight start battle_id=" + std::to_string(id) + " (switch)");
       audio.Play(SoundCategory::Cheer);
-      cheer_latched_flags_.insert(flag);
-      break;
-    }
-
-    // Survives brief unload (bonfire rest / chunk stream). Re-arm after long absence.
-    for (auto it = cheer_latched_flags_.begin(); it != cheer_latched_flags_.end();) {
-      const auto flag = *it;
-      if (present_flags.count(flag) != 0) {
-        ++it;
-        continue;
-      }
-      auto& since = cheer_absent_since_ms_[flag];
-      if (since == 0) {
-        since = now;
-        ++it;
-        continue;
-      }
-      if (now - since >= 45000) {
-        it = cheer_latched_flags_.erase(it);
-        cheer_absent_since_ms_.erase(flag);
-      } else {
-        ++it;
-      }
-    }
-
-    // Defeated bosses drop their latch so NG+/ascetic re-fights can cheer again.
-    for (const auto flag : snap.defeat_flags_on) {
-      cheer_latched_flags_.erase(flag);
-      cheer_absent_since_ms_.erase(flag);
+      cheer_latched_battle_id_ = id;
     }
   }
 

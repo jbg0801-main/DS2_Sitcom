@@ -40,16 +40,24 @@ SoulMemory walk (not DSR 8-digit packing).
 - Defeat IDs are 6-digit (Last Giant `100971`, Pursuer `100968`, … Ivory King `101070`). See SoulSplitter wiki “Dark Souls 2 misc flags”.
 - Baselines re-seeded whenever you leave/re-enter gameplay.
 
-## Boss cheer (LoadedEnemiesTable)
+## Boss cheer (ActiveBossBattleId)
 
-DS2 has no DSR-style EMEVD “display boss bar” flags. v1 cheers when a known boss **chr id**
-appears in `LoadedEnemiesTable` (`*(BaseA+0x18)` SotFS) while that boss’s defeat flag is still
-off.
+LoadedEnemiesTable chr presence is **obsolete** (bosses preload with the area).
 
-SotFS reads chr id **only** at entry `+0x28` (extra offset probes false-matched ids like
-Guardian Dragon `2120` on the Majula→Heide path). Cheer latches per defeat flag across brief
-enemy unloads (bonfire) and mutes for ~12s after a PlaceName wipe so title cards aren’t
-underlaid by area-preload bosses (e.g. Heide Dragonrider).
+**Primary (SotFS 1.03):** ESD `IsBossBattle` chain:
+
+```text
+BaseA → *(+0x70) EventManager → *(+0x88) BossBattleState → int32(+0x14) ActiveBossBattleId
+```
+
+Cheer on rising edge `0 → nonzero`. Latch while id stays set; clear when id returns to 0
+(bonfire / death outside fog can re-arm).
+
+**TRACE (optional):** `trace_boss_bar=true` hooks `FeSceneBossHpGuage` vt[4]
+(`vtable 0x10B0C68`, slot `0x10B0C88`, tick `0x60F00`) and logs `+0xD0/+0xB8…` field changes.
+Do **not** hook `FeSceneEnemyHpGuage` (lock-on trash).
+
+Bob CT Fog Walls bits are fog-cleared world flags — not fight-start.
 
 ## Area wipe (PlaceName title card)
 

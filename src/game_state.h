@@ -16,11 +16,10 @@ struct GameSnapshot {
 
   bool boss_fight_active = false;
   std::int32_t boss_defeat_flag = 0;
+  // ESD IsBossBattle: EventManager+0x88 → +0x14. 0 = not in a boss fight.
+  std::int32_t active_boss_battle_id = 0;
 
   std::vector<std::int32_t> defeat_flags_on;
-  // Parallel: loaded boss chr id + that boss's defeat flag (same index).
-  std::vector<std::int32_t> cheer_chr_ids;
-  std::vector<std::int32_t> cheer_defeat_flags;
   // SoulMemory BossType kill counts that are > 0 (for applause rising-edge backup).
   std::vector<std::int32_t> boss_kills_on;
 

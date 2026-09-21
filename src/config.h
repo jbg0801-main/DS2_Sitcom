@@ -9,6 +9,8 @@ struct Config {
   bool log = false;
   // Proton-friendly PlaceName diagnosis: extra UI hooks + field polls → sitcom.log
   bool trace_area_title = false;
+  // TRACE FeSceneBossHpGuage fields (correlate with ActiveBossBattleId).
+  bool trace_boss_bar = false;
   int poll_hz = 20;
   float volume = 0.7f;
 

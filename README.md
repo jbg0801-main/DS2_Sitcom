@@ -7,7 +7,7 @@ Sitcom canned-audience overlay for **Dark Souls II** and **Dark Souls II: Schola
 Plays local WAV clips when:
 
 - the player takes damage or dies (laughter; random among `laugh*.wav`)
-- a boss is loaded into the world while its defeat flag is still off (cheering)
+- a boss fight starts (`ActiveBossBattleId` rising edge — fog / named bar) (cheering)
 - that boss’s defeated event flag flips (applause)
 - the current map / area id changes after a load (scene wipe — proxy for the area title card)
 - an item is granted via the game’s ItemGive path (**ooh**)
@@ -62,7 +62,7 @@ category when multiple files are present (avoids immediate repeats).
 | Prefix / name | Event |
 | --- | --- |
 | `laugh.wav` / `laugh_XX.wav` | Hit / death / fail laughs |
-| `cheer.wav` / `cheer_XX.wav` | Boss loaded (bar / fog proxy) |
+| `cheer.wav` / `cheer_XX.wav` | Boss fight start (`ActiveBossBattleId`) |
 | `applause.wav` / `applause_XX.wav` | Boss defeated flag |
 | `ooh.wav` / `ooh_XX.wav` | Item get |
 | `scene_wipe.wav` / `scene_wipe_XX.wav` | Area / map change |
@@ -89,7 +89,7 @@ Or: `bash scripts/build-podman.sh` (builds both + packs `dist/DS2SotFS_Sitcom.zi
 
 1. Detects SotFS vs vanilla from `DarkSoulsII.exe` bitness / module size
 2. Resolves GameManagerImp (BaseA), PlayerCtrl, LoadState, EventManager via AOB scans
-3. Polls ~20 Hz for HP, loading, event flags, loaded boss chr ids, and ItemGive
+3. Polls ~20 Hz for HP, loading, event flags, `ActiveBossBattleId`, and ItemGive
 4. Plays WAVs through **winmm `PlaySound`** with PCM gain  
    (`config volume` × in-game **Sound Effect** / FMOD when captured)
 5. Draws a title-menu credit (`Sitcom mod by jbg0801 2026` plus dedication)

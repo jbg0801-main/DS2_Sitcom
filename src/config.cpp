@@ -83,6 +83,7 @@ bool LoadConfig(const std::wstring& ini_path, Config& out) {
   cfg.enabled = ReadBool(L"sitcom", L"enabled", true, ini_path);
   cfg.log = ReadBool(L"sitcom", L"log", true, ini_path);
   cfg.trace_area_title = ReadBool(L"sitcom", L"trace_area_title", false, ini_path);
+  cfg.trace_boss_bar = ReadBool(L"sitcom", L"trace_boss_bar", false, ini_path);
   cfg.poll_hz = ReadInt(L"sitcom", L"poll_hz", 20, ini_path);
   if (cfg.poll_hz < 1) {
     cfg.poll_hz = 1;

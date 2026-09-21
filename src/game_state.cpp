@@ -20,52 +20,51 @@ EventFlags g_event_flags;
 struct BossDef {
   std::int32_t defeat_flag;
   int boss_type_off;  // SoulMemory BossType enum value (byte offset into kill array)
-  int chr_ids[4];
 };
 
-// Defeat flags: SoulSplitter wiki. BossType: SoulMemory BossType.cs. Chr: soulsmodding.
+// Defeat flags: SoulSplitter wiki. BossType: SoulMemory BossType.cs.
 constexpr BossDef kBosses[] = {
-    {100971, 0x7c, {3096, 0, 0, 0}},          // Last Giant
-    {100968, 0x70, {3180, 0, 0, 0}},          // Pursuer
-    {100953, 0x34, {6191, 0, 0, 0}},          // Executioner's Chariot
-    {100958, 0x48, {5040, 0, 0, 0}},          // Looking Glass Knight
-    {100954, 0x38, {1540, 0, 0, 0}},          // Skeleton Lords
-    {100961, 0x54, {3033, 0, 0, 0}},          // Flexile Sentry
-    {100963, 0x5c, {6260, 0, 0, 0}},          // Lost Sinner
-    {101001, 0xa8, {3240, 0, 0, 0}},          // Belfry Gargoyles
-    {100962, 0x58, {3250, 0, 0, 0}},          // Ruin Sentinels
-    {100965, 0x64, {2261, 0, 0, 0}},          // Royal Rat Vanguard
-    {100967, 0x6c, {6280, 0, 0, 0}},          // Royal Rat Authority
-    {100957, 0x44, {5030, 0, 0, 0}},          // Scorpioness Najka
-    {100951, 0x2c, {6030, 0, 0, 0}},          // Duke's Dear Freja
-    {100956, 0x40, {5010, 0, 0, 0}},          // Mytha
-    {100966, 0x68, {3260, 0, 0, 0}},          // The Rotten
-    {100960, 0x50, {6250, 0, 0, 0}},          // Old Dragonslayer
-    {100955, 0x3c, {5000, 5001, 0, 0}},       // Covetous Demon
-    {100964, 0x60, {3050, 0, 0, 0}},          // Smelter Demon (red)
-    {100952, 0x30, {6070, 0, 0, 0}},          // Old Iron King
-    {100970, 0x78, {2120, 0, 0, 0}},          // Guardian Dragon
-    {100950, 0x28, {6020, 0, 0, 0}},          // Demon of Song
-    {100975, 0x8c, {3330, 0, 0, 0}},          // Velstadt
-    {100978, 0x98, {5146, 6840, 0, 0}},       // Vendrick
-    {100979, 0x9c, {5061, 0, 0, 0}},          // Darklurker
-    {100959, 0x4c, {6110, 6115, 0, 0}},       // Dragonrider
-    {100980, 0xa0, {6110, 6115, 0, 0}},       // Twin Dragonriders
-    {101000, 0xa4, {1370, 0, 0, 0}},          // Prowling Magus
-    {100972, 0x80, {3097, 0, 0, 0}},          // Giant Lord
-    {100977, 0x94, {6000, 0, 0, 0}},          // Ancient Dragon
-    {100974, 0x88, {3320, 3340, 0, 0}},       // Throne Watcher & Defender
-    {100973, 0x84, {6270, 7036, 0, 0}},       // Nashandra
-    {101080, 0x118, {6920, 0, 0, 0}},         // Aldia
-    {101050, 0xc8, {6820, 0, 0, 0}},          // Elana
-    {101051, 0xd4, {6810, 0, 0, 0}},          // Sinh
-    {101053, 0xf4, {0, 0, 0, 0}},             // Graverobber trio
-    {101063, 0xfc, {3052, 0, 0, 0}},          // Blue Smelter
-    {101061, 0xcc, {6750, 0, 0, 0}},          // Fume Knight
-    {101062, 0xf8, {6800, 0, 0, 0}},          // Sir Alonne
-    {101070, 0x104, {6900, 0, 0, 0}},         // Burnt Ivory King
-    {101071, 0xd0, {6791, 0, 0, 0}},          // Aava
-    {101072, 0x108, {6790, 0, 0, 0}},         // Lud & Zallen
+    {100971, 0x7c},   // Last Giant
+    {100968, 0x70},   // Pursuer
+    {100953, 0x34},   // Executioner's Chariot
+    {100958, 0x48},   // Looking Glass Knight
+    {100954, 0x38},   // Skeleton Lords
+    {100961, 0x54},   // Flexile Sentry
+    {100963, 0x5c},   // Lost Sinner
+    {101001, 0xa8},   // Belfry Gargoyles
+    {100962, 0x58},   // Ruin Sentinels
+    {100965, 0x64},   // Royal Rat Vanguard
+    {100967, 0x6c},   // Royal Rat Authority
+    {100957, 0x44},   // Scorpioness Najka
+    {100951, 0x2c},   // Duke's Dear Freja
+    {100956, 0x40},   // Mytha
+    {100966, 0x68},   // The Rotten
+    {100960, 0x50},   // Old Dragonslayer
+    {100955, 0x3c},   // Covetous Demon
+    {100964, 0x60},   // Smelter Demon (red)
+    {100952, 0x30},   // Old Iron King
+    {100970, 0x78},   // Guardian Dragon
+    {100950, 0x28},   // Demon of Song
+    {100975, 0x8c},   // Velstadt
+    {100978, 0x98},   // Vendrick
+    {100979, 0x9c},   // Darklurker
+    {100959, 0x4c},   // Dragonrider
+    {100980, 0xa0},   // Twin Dragonriders
+    {101000, 0xa4},   // Prowling Magus
+    {100972, 0x80},   // Giant Lord
+    {100977, 0x94},   // Ancient Dragon
+    {100974, 0x88},   // Throne Watcher & Defender
+    {100973, 0x84},   // Nashandra
+    {101080, 0x118},  // Aldia
+    {101050, 0xc8},   // Elana
+    {101051, 0xd4},   // Sinh
+    {101053, 0xf4},   // Graverobber trio
+    {101063, 0xfc},   // Blue Smelter
+    {101061, 0xcc},   // Fume Knight
+    {101062, 0xf8},   // Sir Alonne
+    {101070, 0x104},  // Burnt Ivory King
+    {101071, 0xd0},   // Aava
+    {101072, 0x108},  // Lud & Zallen
 };
 
 // Map ids appear in two encodings (both end in …00_00):
@@ -312,43 +311,6 @@ std::uintptr_t ScanLoadStateSlot() {
   return static_cast<std::uintptr_t>(*reinterpret_cast<std::uint32_t*>(hit + 2));
 }
 
-bool EntryHasChrId(std::uintptr_t entry, int chr_id) {
-  if (!entry || chr_id <= 0 || !IsReadable(entry, 0x40)) {
-    return false;
-  }
-  // SotFS enemy param/chr id sits at +0x28 (DS2S-META). Probing extra offsets matched
-  // unrelated int32s (e.g. Guardian Dragon 2120 while walking Majula→Heide).
-  if (IsScholar()) {
-    return ReadT<std::int32_t>(entry + 0x28) == chr_id;
-  }
-  constexpr int kChrOffs[] = {0x28, 0x14, 0x1C, 0x20, 0x24, 0x2C, 0x30, 0x10};
-  for (int off : kChrOffs) {
-    if (ReadT<std::int32_t>(entry + static_cast<std::uintptr_t>(off)) == chr_id) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool LoadedEnemyHasChr(std::uintptr_t table, int chr_id) {
-  if (!table || chr_id <= 0) {
-    return false;
-  }
-  const int stride = static_cast<int>(sizeof(std::uintptr_t));
-  // Slot count kept modest — long scans amplified false pointer hits on vanilla.
-  const int slots = IsScholar() ? 64 : 96;
-  for (int i = 0; i < slots; ++i) {
-    const auto entry = ReadPtr(table + static_cast<std::uintptr_t>(i * stride));
-    if (!entry) {
-      continue;
-    }
-    if (EntryHasChrId(entry, chr_id)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool TryReadAnim(std::uintptr_t player_ctrl, std::int32_t* out_anim) {
   // Bob SotFS CT: Hero/Animation/Animation Data/Current Animation
   //   GameManagerImp → +D0 (PlayerCtrl) → +F8 → +38 → +78 → +20 → i32@+10
@@ -534,9 +496,20 @@ GameSnapshot GameState::Read() {
     }
   }
 
-  std::uintptr_t enemies = 0;
-  if (off.loaded_enemies_from_base_a >= 0) {
-    enemies = ReadPtr(base_a + static_cast<std::uintptr_t>(off.loaded_enemies_from_base_a));
+  // ESD IsBossBattle (SotFS): *( *(BaseA+0x70) + 0x88 ) + 0x14
+  if (IsScholar() && off.event_manager_from_base_a >= 0) {
+    const auto event_man =
+        ReadPtr(base_a + static_cast<std::uintptr_t>(off.event_manager_from_base_a));
+    if (event_man) {
+      const auto battle_state = ReadPtr(event_man + 0x88);
+      if (battle_state) {
+        const auto battle_id = ReadT<std::int32_t>(battle_state + 0x14);
+        if (battle_id > 0) {
+          s.active_boss_battle_id = battle_id;
+          s.boss_fight_active = true;
+        }
+      }
+    }
   }
 
   const bool flags_ok = g_event_flags.Ready();
@@ -557,28 +530,6 @@ GameSnapshot GameState::Read() {
         if (kills > 0 && kill_seen.insert(boss.boss_type_off).second) {
           s.boss_kills_on.push_back(boss.boss_type_off);
         }
-      }
-
-      // Cheer gating uses defeat *flags* only (kill counts stay set after ascetics).
-      bool cheer_defeated = defeated;
-      if (!flags_ok) {
-        cheer_defeated = false;
-      }
-
-      bool loaded = false;
-      if (enemies && !cheer_defeated) {
-        for (int k = 0; k < 4 && boss.chr_ids[k]; ++k) {
-          if (LoadedEnemyHasChr(enemies, boss.chr_ids[k])) {
-            loaded = true;
-            s.cheer_chr_ids.push_back(boss.chr_ids[k]);
-            s.cheer_defeat_flags.push_back(boss.defeat_flag);
-            break;
-          }
-        }
-      }
-      if (loaded && !cheer_defeated && !s.boss_fight_active) {
-        s.boss_fight_active = true;
-        s.boss_defeat_flag = boss.defeat_flag;
       }
     }
   }

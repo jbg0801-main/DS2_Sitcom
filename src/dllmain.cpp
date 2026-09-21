@@ -1,5 +1,6 @@
 #include "area_title_hooks.h"
 #include "audio.h"
+#include "boss_bar_hooks.h"
 #include "config.h"
 #include "credit.h"
 #include "dinput8_proxy.h"
@@ -61,11 +62,12 @@ DWORD WINAPI WorkerMain(LPVOID) {
     cfg.log = true;
     LogWrite("worker: config missing — using defaults with logging on");
   }
-  if (cfg.trace_area_title && !cfg.log) {
+  if ((cfg.trace_area_title || cfg.trace_boss_bar) && !cfg.log) {
     cfg.log = true;
-    LogWrite("worker: trace_area_title forces log=true");
+    LogWrite("worker: TRACE forces log=true");
   }
   AreaTitleHooksConfigure(cfg.trace_area_title);
+  BossBarHooksConfigure(cfg.trace_boss_bar);
   LogInit(log_path, cfg.log);
   if (cfg.log) {
     LogWrite("worker: logging enabled");
@@ -124,6 +126,9 @@ DWORD WINAPI WorkerMain(LPVOID) {
   if (!AreaTitleHooksInit()) {
     LogWrite("area_title: MapName PlaceName hook not ready — will retry while polling");
   }
+  if (!BossBarHooksInit()) {
+    LogWrite("boss_bar: FeSceneBossHpGuage hook not ready — will retry while polling");
+  }
 
   EventDetector events;
   const DWORD poll_ms = static_cast<DWORD>(1000 / (cfg.poll_hz > 0 ? cfg.poll_hz : 20));
@@ -141,6 +146,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
       sfx_ok = FmodTryGetSfxVolume(&sfx);
     }
     AreaTitleHooksInit();
+    BossBarHooksInit();
     EstusHooksInit();
     if (sfx_ok) {
       audio.SetGameSfxVolume(sfx);
@@ -170,6 +176,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
                " player_valid=" + std::to_string(snap.player_valid) +
                " hp=" + std::to_string(snap.player_hp) + "/" + std::to_string(snap.player_max_hp) +
                " boss_fight=" + std::to_string(snap.boss_fight_active) +
+               " battle_id=" + std::to_string(snap.active_boss_battle_id) +
                " defeat=" + std::to_string(snap.boss_defeat_flag) + " area=0x" + area_buf +
                " sfx=" + sfx_buf + " anim=" + std::to_string(snap.current_anim));
     }
@@ -182,6 +189,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
   CreditShutdown();
   ItemHooksShutdown();
   EstusHooksShutdown();
+  BossBarHooksShutdown();
   AreaTitleHooksShutdown();
   game.Shutdown();
   audio.Shutdown();
