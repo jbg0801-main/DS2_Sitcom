@@ -42,7 +42,14 @@ SoulMemory walk (not DSR 8-digit packing).
 
 ## Boss cheer (LoadedEnemiesTable)
 
-DS2 has no DSR-style EMEVD “display boss bar” flags. v1 cheers when a known boss **chr id** appears in `LoadedEnemiesTable` (`*(BaseA+0x18)` SotFS; same hop attempted on vanilla) while that boss’s defeat flag is still off. Chr id field is probed at several struct offsets (`+0x28`, `+0x14`, …) for 32-bit layout differences. Vanilla table is not in META — if cheer stays silent, CE the HUD boss gauge / fog bit and record it here.
+DS2 has no DSR-style EMEVD “display boss bar” flags. v1 cheers when a known boss **chr id**
+appears in `LoadedEnemiesTable` (`*(BaseA+0x18)` SotFS) while that boss’s defeat flag is still
+off.
+
+SotFS reads chr id **only** at entry `+0x28` (extra offset probes false-matched ids like
+Guardian Dragon `2120` on the Majula→Heide path). Cheer latches per defeat flag across brief
+enemy unloads (bonfire) and mutes for ~12s after a PlaceName wipe so title cards aren’t
+underlaid by area-preload bosses (e.g. Heide Dragonrider).
 
 ## Area wipe (PlaceName title card)
 

@@ -5,6 +5,8 @@
 #include "game_state.h"
 
 #include <cstdint>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace sitcom {
 
@@ -29,6 +31,9 @@ class EventDetector {
   std::int32_t deaths_at_load_start_ = 0;
   std::uint64_t last_wipe_ms_ = 0;
   std::uint64_t last_death_laugh_ms_ = 0;
+  // Boss cheer: latch defeat flags so brief unload (bonfire / streaming) does not re-cheer.
+  std::unordered_set<std::int32_t> cheer_latched_flags_;
+  std::unordered_map<std::int32_t, std::uint64_t> cheer_absent_since_ms_;
 };
 
 }  // namespace sitcom

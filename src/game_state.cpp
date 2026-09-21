@@ -313,10 +313,14 @@ std::uintptr_t ScanLoadStateSlot() {
 }
 
 bool EntryHasChrId(std::uintptr_t entry, int chr_id) {
-  if (!entry || chr_id <= 0) {
+  if (!entry || chr_id <= 0 || !IsReadable(entry, 0x40)) {
     return false;
   }
-  // Chr id field offset differs between builds; probe a few common slots.
+  // SotFS enemy param/chr id sits at +0x28 (DS2S-META). Probing extra offsets matched
+  // unrelated int32s (e.g. Guardian Dragon 2120 while walking Majula→Heide).
+  if (IsScholar()) {
+    return ReadT<std::int32_t>(entry + 0x28) == chr_id;
+  }
   constexpr int kChrOffs[] = {0x28, 0x14, 0x1C, 0x20, 0x24, 0x2C, 0x30, 0x10};
   for (int off : kChrOffs) {
     if (ReadT<std::int32_t>(entry + static_cast<std::uintptr_t>(off)) == chr_id) {
@@ -331,23 +335,15 @@ bool LoadedEnemyHasChr(std::uintptr_t table, int chr_id) {
     return false;
   }
   const int stride = static_cast<int>(sizeof(std::uintptr_t));
-  for (int i = 0; i < 96; ++i) {
+  // Slot count kept modest — long scans amplified false pointer hits on vanilla.
+  const int slots = IsScholar() ? 64 : 96;
+  for (int i = 0; i < slots; ++i) {
     const auto entry = ReadPtr(table + static_cast<std::uintptr_t>(i * stride));
     if (!entry) {
       continue;
     }
     if (EntryHasChrId(entry, chr_id)) {
       return true;
-    }
-  }
-  // Some builds store a pointer to an array-of-structs; try one extra deref.
-  const auto inner = ReadPtr(table);
-  if (inner && inner != table) {
-    for (int i = 0; i < 96; ++i) {
-      const auto entry = ReadPtr(inner + static_cast<std::uintptr_t>(i * stride));
-      if (entry && EntryHasChrId(entry, chr_id)) {
-        return true;
-      }
     }
   }
   return false;
@@ -575,6 +571,7 @@ GameSnapshot GameState::Read() {
           if (LoadedEnemyHasChr(enemies, boss.chr_ids[k])) {
             loaded = true;
             s.cheer_chr_ids.push_back(boss.chr_ids[k]);
+            s.cheer_defeat_flags.push_back(boss.defeat_flag);
             break;
           }
         }
