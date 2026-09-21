@@ -72,7 +72,10 @@ Observed: Things Betwixt `100200`, Majula `100400`. Clear-to-`-1` (vt[3]) is ign
 
 ## Player anim (fail laughs)
 
-Probe chains under `PlayerCtrl` (`+0xB8 → +0x8 → +0x20 → +0xC` and nearby). With `laugh_on_empty_flask=true`, every anim change is logged as `probe: anim A→B` until TAE IDs are pinned.
+Bob SotFS CT chain (Current Animation):
+`PlayerCtrl +0xF8 → +0x38 → +0x78 → +0x20 → i32@+0x10`
+
+With `laugh_on_empty_flask=true`, every anim change logs `probe: anim A→B` until empty-flask TAE is pinned.
 
 ## ItemGive (ooh)
 
@@ -83,7 +86,18 @@ Probe chains under `PlayerCtrl` (`+0xB8 → +0x8 → +0x20 → +0xC` and nearby)
 
 ## Player anim (fail laughs)
 
-Tentative SotFS chain `PlayerCtrl+0xB8 → +0x8 → +0x20 → +0xC`. Values outside 0–19999 are ignored. Probe logs goods-band 7400–7600. Empty flask / locked use / fail-cast / ladder-fall still use DS1-like TAE numbers until CE confirms DS2 ids.
+Bob SotFS CT: `PlayerCtrl+0xF8 → +0x38 → +0x78 → +0x20 → +0x10`. Empty flask / locked use /
+fail-cast / ladder-fall IDs still tentative — use `probe: anim` logs to pin them.
+
+## Empty Estus
+
+Primary signal is Bob Current Animation (chain `PlayerCtrl+0xF8→+0x38→+0x78→+0x20→+0x10`):
+- empty shake: `180200 → 900 → **180202**`
+- filled chug: `180200 → 900 → **180201** → 920`
+
+The Estus charge helper (~`RVA 0x1AE080`) only runs on filled drinks (`0x1AE0BF` decrement).
+Empty use never enters that function (fail branch at `0x1AE0D3` stays cold) — do not patch the
+decrement site (`rax` clobber → infinite Estus).
 
 ## Sound Effect volume
 

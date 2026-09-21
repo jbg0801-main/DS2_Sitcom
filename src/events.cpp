@@ -2,6 +2,7 @@
 
 #include "area_title_hooks.h"
 #include "ds2_flavor.h"
+#include "estus_hooks.h"
 #include "item_hooks.h"
 #include "log.h"
 
@@ -23,10 +24,9 @@ bool IsFailCastAnim(std::int32_t anim) {
   return anim == 6299 || anim == 6399 || anim == 2010 || anim == 2011;
 }
 bool IsEmptyEstusAnim(std::int32_t anim) {
-  // DSR-like + common DS2 drink / empty-flask candidates (confirm via probe logs).
-  return anim == 7588 || anim == 7589 || anim == 5000 || anim == 5001 || anim == 5002 ||
-         anim == 5010 || anim == 5011 || anim == 5100 || anim == 5101 || anim == 6000 ||
-         anim == 6001 || anim == 16 || anim == 17 || anim == 18 || anim == 19;
+  // SotFS empty-flask shake (live probe): 180200 → 900 → 180202 (shake/head-shake).
+  // Filled chug is 900 → 180201 → 920. Charge-helper fail branch is never entered.
+  return anim == 180202;
 }
 bool IsGoodsProbeAnim(std::int32_t anim) {
   return (anim >= 7400 && anim <= 7600) || (anim >= 5000 && anim <= 5200) ||
@@ -64,6 +64,7 @@ void EventDetector::Reset() {
   load_edge_armed_ = false;
   deaths_at_load_start_ = 0;
   last_wipe_ms_ = 0;
+  last_death_laugh_ms_ = 0;
 }
 
 void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& audio) {
@@ -131,6 +132,18 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     load_edge_armed_ = false;
   }
 
+  // Death often drives HP negative in one poll, which clears player_valid / in_gameplay
+  // before the in-gameplay HP branch runs. Catch it on that edge (and deaths++).
+  if (prev_.in_gameplay && cfg.laugh_on_death) {
+    const bool hp_killed = prev_.player_hp > 0 && snap.player_hp <= 0;
+    const bool deaths_up = snap.deaths > prev_.deaths;
+    if ((hp_killed || deaths_up) && (now - last_death_laugh_ms_) >= 2500) {
+      LogWrite(hp_killed ? "event: player death" : "event: death counter increased");
+      audio.Play(SoundCategory::Laugh);
+      last_death_laugh_ms_ = now;
+    }
+  }
+
   if (!snap.in_gameplay) {
     if (prev_.in_gameplay) {
       flags_seeded_ = false;
@@ -152,9 +165,11 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     const bool max_hp_changed = snap.player_max_hp != prev_.player_max_hp;
     if (!max_hp_changed && snap.player_hp < prev_.player_hp) {
       if (snap.player_hp <= 0) {
-        if (cfg.laugh_on_death) {
+        // Usually handled on the gameplay-exit edge; keep as in-game backup.
+        if (cfg.laugh_on_death && (now - last_death_laugh_ms_) >= 2500) {
           LogWrite("event: player death");
           audio.Play(SoundCategory::Laugh);
+          last_death_laugh_ms_ = now;
         }
       } else if (cfg.laugh_on_hit) {
         const auto cooldown_ms = static_cast<std::uint64_t>(cfg.laugh_hit_seconds * 1000.0f);
@@ -165,9 +180,10 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
         }
       }
     } else if (snap.deaths > prev_.deaths) {
-      if (cfg.laugh_on_death) {
+      if (cfg.laugh_on_death && (now - last_death_laugh_ms_) >= 2500) {
         LogWrite("event: death counter increased");
         audio.Play(SoundCategory::Laugh);
+        last_death_laugh_ms_ = now;
       }
     }
   }
@@ -228,6 +244,11 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     if (cfg.laugh_on_ladder_fall && AnimEntered(snap, prev_, IsLadderFallAnim)) {
       TryFailLaugh(now, &last_fail_laugh_ms_, cfg.laugh_hit_seconds, audio, "ladder fall");
     }
+  }
+
+  // Primary empty-flask signal (SotFS): Estus chug with charge byte already 0.
+  if (cfg.laugh_on_empty_flask && EstusHooksConsumeEmpty() > 0) {
+    TryFailLaugh(now, &last_fail_laugh_ms_, cfg.laugh_hit_seconds, audio, "empty flask");
   }
 
   prev_ = snap;

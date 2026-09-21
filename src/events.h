@@ -28,6 +28,7 @@ class EventDetector {
   bool load_edge_armed_ = false;
   std::int32_t deaths_at_load_start_ = 0;
   std::uint64_t last_wipe_ms_ = 0;
+  std::uint64_t last_death_laugh_ms_ = 0;
 };
 
 }  // namespace sitcom

@@ -1,9 +1,10 @@
-#include "audio.h"
 #include "area_title_hooks.h"
+#include "audio.h"
 #include "config.h"
 #include "credit.h"
 #include "dinput8_proxy.h"
 #include "events.h"
+#include "estus_hooks.h"
 #include "fmod_volume.h"
 #include "game_state.h"
 #include "ds2_flavor.h"
@@ -109,6 +110,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
   LogWrite(std::string("worker: GameState ready (") + VersionName() + ")");
 
   ItemHooksInit();
+  EstusHooksInit();
 
   // Attach FMOD only after the game is up — IAT/inline hooks, no LoadLibrary, no probes.
   if (FmodVolumeInit()) {
@@ -139,6 +141,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
       sfx_ok = FmodTryGetSfxVolume(&sfx);
     }
     AreaTitleHooksInit();
+    EstusHooksInit();
     if (sfx_ok) {
       audio.SetGameSfxVolume(sfx);
       if (std::fabs(sfx - last_logged_sfx) > 0.01f) {
@@ -178,6 +181,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
 
   CreditShutdown();
   ItemHooksShutdown();
+  EstusHooksShutdown();
   AreaTitleHooksShutdown();
   game.Shutdown();
   audio.Shutdown();

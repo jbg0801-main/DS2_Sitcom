@@ -354,22 +354,24 @@ bool LoadedEnemyHasChr(std::uintptr_t table, int chr_id) {
 }
 
 bool TryReadAnim(std::uintptr_t player_ctrl, std::int32_t* out_anim) {
-  // Candidate chains (pointer hops then int32). SotFS uses the first; vanilla shares +0xB8.
-  const int chains[][5] = {
-      {0xB8, 0x8, 0x20, 0xC, -1},
-      {0xB8, 0x8, 0x18, 0xC, -1},
-      {0xB4, 0x8, 0x20, 0xC, -1},
-      {0x90, 0x8, 0x20, 0xC, -1},
+  // Bob SotFS CT: Hero/Animation/Animation Data/Current Animation
+  //   GameManagerImp → +D0 (PlayerCtrl) → +F8 → +38 → +78 → +20 → i32@+10
+  // Older guesses kept as fallbacks.
+  const int chains[][6] = {
+      {0xF8, 0x38, 0x78, 0x20, 0x10, -1},
+      {0xB8, 0x8, 0x20, 0xC, -1, -1},
+      {0xB8, 0x8, 0x18, 0xC, -1, -1},
+      {0xF8, 0x38, 0x78, 0x20, 0x0, -1},
   };
   for (const auto& ch : chains) {
     std::uintptr_t p = player_ctrl;
     bool ok = true;
     int last_off = -1;
-    for (int i = 0; i < 5 && ch[i] >= 0; ++i) {
+    for (int i = 0; i < 6 && ch[i] >= 0; ++i) {
       last_off = ch[i];
-      if (i + 1 < 5 && ch[i + 1] >= 0) {
+      if (i + 1 < 6 && ch[i + 1] >= 0) {
         p = ReadPtr(p + static_cast<std::uintptr_t>(ch[i]));
-        if (!p) {
+        if (!p || !IsReadable(p, 8)) {
           ok = false;
           break;
         }
@@ -379,7 +381,8 @@ bool TryReadAnim(std::uintptr_t player_ctrl, std::int32_t* out_anim) {
       continue;
     }
     const auto anim = ReadT<std::int32_t>(p + static_cast<std::uintptr_t>(last_off), -1);
-    if (anim >= 0 && anim < 50000) {
+    // DS2 Current Animation can be large Morpheme/TAE ids; keep a wide but sane band.
+    if (anim >= 0 && anim < 2000000) {
       *out_anim = anim;
       return true;
     }
