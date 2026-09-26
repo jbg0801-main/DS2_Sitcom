@@ -589,14 +589,17 @@ GameSnapshot GameState::Read() {
     }
   }
 
-  // ESD IsBossBattle (SotFS): *( *(BaseA+0x70) + 0x88 ) + 0x14
-  if (IsScholar() && off.event_manager_from_base_a >= 0) {
+  // ESD IsBossBattle. Scholar: *(BaseA+0x70)+0x88, id +0x14.
+  // Vanilla 1.12 (0x8678F0): *(BaseA+0x44)+0x44, id +0x10.
+  if (off.event_manager_from_base_a >= 0 && off.battle_state_from_event_manager >= 0) {
     const auto event_man =
         ReadPtr(base_a + static_cast<std::uintptr_t>(off.event_manager_from_base_a));
     if (event_man) {
-      const auto battle_state = ReadPtr(event_man + 0x88);
+      const auto battle_state = ReadPtr(
+          event_man + static_cast<std::uintptr_t>(off.battle_state_from_event_manager));
       if (battle_state) {
-        const auto battle_id = ReadT<std::int32_t>(battle_state + 0x14);
+        const auto battle_id = ReadT<std::int32_t>(
+            battle_state + static_cast<std::uintptr_t>(off.battle_id_from_battle_state));
         if (battle_id > 0) {
           s.active_boss_battle_id = battle_id;
           s.boss_fight_active = true;

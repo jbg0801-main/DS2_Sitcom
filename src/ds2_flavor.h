@@ -30,6 +30,9 @@ struct Ds2Offsets {
   int deaths_from_player_param = 0;
   int game_state_from_base_a = 0;
   int event_manager_from_base_a = 0;
+  // EventManager → BossBattleState → int32 ActiveBossBattleId (cheer / applause).
+  int battle_state_from_event_manager = -1;
+  int battle_id_from_battle_state = -1;
   int last_bonfire_area_from_event_manager = 0;
   int loaded_enemies_from_base_a = -1;  // -1 = unavailable
   int map_manager_from_base_a = -1;

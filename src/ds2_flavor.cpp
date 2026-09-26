@@ -32,6 +32,8 @@ Ds2Offsets ScholarOffsets() {
   o.deaths_from_player_param = 0x1A4;
   o.game_state_from_base_a = 0x24AC;
   o.event_manager_from_base_a = 0x70;
+  o.battle_state_from_event_manager = 0x88;
+  o.battle_id_from_battle_state = 0x14;
   o.last_bonfire_area_from_event_manager = 0x164;
   o.loaded_enemies_from_base_a = 0x18;
   o.map_manager_from_base_a = 0x38;
@@ -55,20 +57,23 @@ Ds2Offsets VanillaOffsets() {
   o.deaths_from_player_param = 0x1A0;
   o.game_state_from_base_a = 0xDEC;
   o.event_manager_from_base_a = 0x44;
+  // IsBossBattle @ 0x8678F0: *(BaseA+0x44)+0x44, id at +0x10.
+  o.battle_state_from_event_manager = 0x44;
+  o.battle_id_from_battle_state = 0x10;
   o.last_bonfire_area_from_event_manager = 0xB4;
   // META only documents SotFS LoadedEnemiesTable; try the same BaseA+0x18 hop.
   o.loaded_enemies_from_base_a = 0x18;
   // No META MapManager for vanilla — leave -1 (do not use bonfire area for wipe).
   o.map_manager_from_base_a = -1;
   o.load_state_flag_off = 0x1D4;
-  // SoulMemory: GameManagerImp → 0, 0, 0x44, 0x14, 0x10, 0x4
+  // Game code reads flags at *(BaseA+0x44)+0x10. SoulMemory's extra leading
+  // 0 walked through the vtable and landed on the wrong object.
   o.boss_counters_chain[0] = 0;
-  o.boss_counters_chain[1] = 0;
-  o.boss_counters_chain[2] = 0x44;
-  o.boss_counters_chain[3] = 0x14;
-  o.boss_counters_chain[4] = 0x10;
-  o.boss_counters_chain[5] = 0x4;
-  o.boss_counters_chain_len = 6;
+  o.boss_counters_chain[1] = 0x44;
+  o.boss_counters_chain[2] = 0x14;
+  o.boss_counters_chain[3] = 0x10;
+  o.boss_counters_chain[4] = 0x4;
+  o.boss_counters_chain_len = 5;
   return o;
 }
 

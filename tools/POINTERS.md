@@ -36,7 +36,7 @@ Record the game build you tested against here after first successful run:
 SoulMemory walk (not DSR 8-digit packing).
 
 - SotFS: GameManagerImp chain `0, 0x70, 0x20` then `*(base + r8*8 + 0x20)` buckets, next `+0x10`
-- Vanilla: chain `0, 0, 0x44, 0x10`, buckets `+0x10`, next `+0xC`
+- Vanilla 1.12: `*(BaseA+0x44)+0x10` (chain `0, 0x44, 0x10`). The old extra leading `0` followed the vtable and never found a flag group. Buckets still `+0x10`, next `+0xC`
 - Defeat IDs are 6-digit (Last Giant `100971`, Pursuer `100968`, … Ivory King `101070`). See SoulSplitter wiki “Dark Souls 2 misc flags”.
 - Baselines re-seeded whenever you leave/re-enter gameplay.
 
@@ -44,11 +44,14 @@ SoulMemory walk (not DSR 8-digit packing).
 
 LoadedEnemiesTable chr presence is **obsolete** (bosses preload with the area).
 
-**Primary (SotFS 1.03):** ESD `IsBossBattle` chain:
+**Primary:** ESD `IsBossBattle` chain.
 
 ```text
-BaseA → *(+0x70) EventManager → *(+0x88) BossBattleState → int32(+0x14) ActiveBossBattleId
+SotFS 1.03:  BaseA → *(+0x70) EventManager → *(+0x88) BossBattleState → int32(+0x14)
+Vanilla 1.12: BaseA → *(+0x44) EventManager → *(+0x44) BossBattleState → int32(+0x10)
 ```
+
+Vanilla site is `0x8678F0`.
 
 Cheer on rising edge `0 → nonzero`. Latch while id stays set; clear when id returns to 0
 (bonfire / death outside fog can re-arm).
@@ -90,7 +93,7 @@ Connector sub-maps that change the displayed id with no title card are ignored:
 - Primary: 6-digit defeat event flags (SoulMemory walk). **Important:** resolve EventFlagManager with a final pointer deref (SoulMemory `AddPointer` convention). The seen-flag set resets only on the title screen, so a kill that arrives on the frame gameplay returns still applauds. While `ActiveBossBattleId` is set, a new defeat flag is logged but the clap waits until that id falls to 0 and loot landed within 4s (Dragonrider: flag `100959` under the death sting, clap ~3s later with the soul). Flag/kill-count still applaud immediately when no fight is active.
 - Backup: SoulMemory boss kill-count array  
   - SotFS: `BaseA → +0x70 → +0x28 → +0x20 → +0x8`  
-  - Vanilla: `BaseA → +0 → +0x44 → +0x14 → +0x10 → +0x4`  
+  - Vanilla: `BaseA → +0x44 → +0x14 → +0x10 → +0x4` (no extra vtable hop)  
   - `BossType` byte offsets in SoulMemory `BossType.cs` (Last Giant `0x7c`, …)
 
 ## Player anim (fail laughs)

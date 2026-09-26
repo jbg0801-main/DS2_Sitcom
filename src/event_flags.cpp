@@ -133,8 +133,9 @@ bool EventFlags::Resolve() {
     const int chain[] = {0, 0x70, 0x20};
     flags_base_ = ResolveChain(slot, chain, 3);
   } else {
-    const int chain[] = {0, 0, 0x44, 0x10};
-    flags_base_ = ResolveChain(slot, chain, 4);
+    // *(BaseA+0x44)+0x10, same object the game passes to the flag reader at 0x87FEF0.
+    const int chain[] = {0, 0x44, 0x10};
+    flags_base_ = ResolveChain(slot, chain, 3);
   }
   if (flags_base_) {
     flags_base_ = ReadPtr(flags_base_);
@@ -157,7 +158,20 @@ bool EventFlags::Resolve() {
   snprintf(buf, sizeof(buf), "event_flags: base=0x%llX (%s) sample_100971=%s readable=%d",
            static_cast<unsigned long long>(flags_base_), IsScholar() ? "scholar" : "vanilla",
            sample ? "on" : "off", ok ? 1 : 0);
-  LogWrite(buf);
+  if (!ok) {
+    static bool logged_fail = false;
+    if (!logged_fail) {
+      logged_fail = true;
+      LogWrite(buf);
+    }
+    ready_ = false;
+    return false;
+  }
+  static bool logged_ok = false;
+  if (!logged_ok) {
+    logged_ok = true;
+    LogWrite(buf);
+  }
   ready_ = true;
   return true;
 }
