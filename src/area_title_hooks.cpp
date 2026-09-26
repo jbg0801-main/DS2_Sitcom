@@ -48,6 +48,10 @@ bool IsPlaceNameId(std::int32_t id) {
   return id >= 100000 && id < 10000000;
 }
 
+// Connector sub-maps update +0x1C but never show a title card.
+// m10_30 Heide ↔ Wharf (spiral exit), m10_29 Majula ↔ Shaded Woods.
+bool IsConnectorPlaceId(std::int32_t id) { return id == 103000 || id == 102900; }
+
 void NotePlaceId(std::int32_t from, std::int32_t to) {
   g_title_hits.fetch_add(1, std::memory_order_release);
   char buf[96];
@@ -226,8 +230,15 @@ void AreaTitleHooksPoll() {
     LogWrite(buf);
   }
 
-  // Rising/change to a real PlaceName id (not clear-to-idle).
+  // Rising/change to a real PlaceName id (not clear-to-idle, not a connector sub-map).
   if (IsPlaceNameId(id) && id != prev) {
+    if (IsConnectorPlaceId(id)) {
+      char buf[96];
+      snprintf(buf, sizeof(buf), "area_title: skip connector PlaceName id %d→%d",
+               static_cast<int>(prev), static_cast<int>(id));
+      LogWrite(buf);
+      return;
+    }
     NotePlaceId(prev, id);
   }
 }

@@ -5,6 +5,7 @@
 #include "game_state.h"
 
 #include <cstdint>
+#include <unordered_set>
 
 namespace sitcom {
 
@@ -31,6 +32,18 @@ class EventDetector {
   std::uint64_t last_death_laugh_ms_ = 0;
   // Boss cheer: latch ActiveBossBattleId while fight is active.
   std::int32_t cheer_latched_battle_id_ = 0;
+  // Fight ended with the player alive; applaud if a soul/loot lands within a few seconds.
+  std::int32_t pending_applause_battle_id_ = 0;
+  std::uint64_t pending_applause_ms_ = 0;
+  std::uint64_t last_loot_ms_ = 0;
+  std::uint64_t last_applause_ms_ = 0;
+  // Hit laugh waits one poll so a backstab/critical anim can cancel it.
+  bool pending_hit_ = false;
+  std::int32_t pending_hit_from_hp_ = 0;
+  // Defeat/kill baselines survive gameplay blips; cleared only on the title screen.
+  bool applause_baselined_ = false;
+  std::unordered_set<std::int32_t> seen_defeat_flags_;
+  std::unordered_set<std::int32_t> seen_kill_offsets_;
 };
 
 }  // namespace sitcom

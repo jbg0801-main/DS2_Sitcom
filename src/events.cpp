@@ -11,7 +11,6 @@
 
 #include <cstdio>
 #include <string>
-#include <unordered_set>
 
 namespace sitcom {
 namespace {
@@ -34,6 +33,11 @@ bool IsGoodsProbeAnim(std::int32_t anim) {
          (anim >= 6000 && anim <= 6200) || (anim >= 1 && anim <= 40);
 }
 bool IsLockedUseAnim(std::int32_t anim) { return anim == 7510 || anim == 2020 || anim == 2021; }
+
+// Backstab / riposte band seen in probe logs the poll after a false hit laugh.
+bool IsCriticalAnim(std::int32_t anim) {
+  return (anim >= 160000 && anim <= 160999) || (anim >= 190000 && anim <= 190999);
+}
 
 bool AnimEntered(const GameSnapshot& snap, const GameSnapshot& prev, bool (*pred)(std::int32_t)) {
   return snap.anim_valid && prev.anim_valid && pred(snap.current_anim) && !pred(prev.current_anim);
@@ -67,6 +71,15 @@ void EventDetector::Reset() {
   last_wipe_ms_ = 0;
   last_death_laugh_ms_ = 0;
   cheer_latched_battle_id_ = 0;
+  pending_applause_battle_id_ = 0;
+  pending_applause_ms_ = 0;
+  last_loot_ms_ = 0;
+  last_applause_ms_ = 0;
+  pending_hit_ = false;
+  pending_hit_from_hp_ = 0;
+  applause_baselined_ = false;
+  seen_defeat_flags_.clear();
+  seen_kill_offsets_.clear();
 }
 
 void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& audio) {
@@ -92,6 +105,9 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
   const int got = ItemHooksConsumeAcquired();
   const int suppressed = ItemHooksConsumeSuppressed();
   const int item_id = ItemHooksLastItemId();
+  if (got > 0 && suppressed == 0 && item_id != 0) {
+    last_loot_ms_ = now;
+  }
   bool ooh_from_itemget = false;
   if (cfg.ooh_on_item_get && snap.in_gameplay && !snap.on_title_screen && flags_seeded_ &&
       gameplay_seeded_ms_ != 0 && (now - gameplay_seeded_ms_) >= 2500 && got == 1 &&
@@ -134,6 +150,12 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     stable_area_id_ = 0;
     load_edge_armed_ = false;
     cheer_latched_battle_id_ = 0;
+    pending_applause_battle_id_ = 0;
+    pending_applause_ms_ = 0;
+    pending_hit_ = false;
+    applause_baselined_ = false;
+    seen_defeat_flags_.clear();
+    seen_kill_offsets_.clear();
   }
 
   // Death often drives HP negative in one poll, which clears player_valid / in_gameplay
@@ -153,8 +175,52 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
       flags_seeded_ = false;
       gameplay_seeded_ms_ = 0;
     }
+    pending_hit_ = false;
     prev_ = snap;
     return;
+  }
+
+  // Defeat flags survive a gameplay blip. Baseline only the first in-game sample
+  // after the title screen — a flag that appears when gameplay returns still applauds.
+  if (cfg.applause_on_boss_death) {
+    if (!applause_baselined_) {
+      seen_defeat_flags_.insert(snap.defeat_flags_on.begin(), snap.defeat_flags_on.end());
+      seen_kill_offsets_.insert(snap.boss_kills_on.begin(), snap.boss_kills_on.end());
+      applause_baselined_ = true;
+    } else {
+      // While a fight is still running, the death sting covers an immediate clap.
+      // Hold it for the battle-id clear a few seconds later.
+      const bool hold_for_fight_end =
+          cheer_latched_battle_id_ > 0 || snap.active_boss_battle_id > 0;
+      bool clapped = false;
+      for (const auto id : snap.defeat_flags_on) {
+        if (!seen_defeat_flags_.insert(id).second || clapped) {
+          continue;
+        }
+        if (hold_for_fight_end) {
+          LogWrite("event: boss defeated flag=" + std::to_string(id) + " (hold for fight end)");
+          continue;
+        }
+        LogWrite("event: boss defeated flag=" + std::to_string(id));
+        audio.Play(SoundCategory::Applause);
+        last_applause_ms_ = now;
+        clapped = true;
+      }
+      for (const auto off : snap.boss_kills_on) {
+        if (!seen_kill_offsets_.insert(off).second || clapped) {
+          continue;
+        }
+        if (hold_for_fight_end) {
+          LogWrite("event: boss defeated kill-count off=0x" + std::to_string(off) +
+                   " (hold for fight end)");
+          continue;
+        }
+        LogWrite("event: boss defeated kill-count off=0x" + std::to_string(off));
+        audio.Play(SoundCategory::Applause);
+        last_applause_ms_ = now;
+        clapped = true;
+      }
+    }
   }
 
   if (!flags_seeded_) {
@@ -163,6 +229,20 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     prev_ = snap;
     LogWrite("event: seeded flag baselines in gameplay");
     return;
+  }
+
+  if (pending_hit_) {
+    const bool crit = snap.anim_valid && IsCriticalAnim(snap.current_anim);
+    const bool still_down = snap.player_valid && snap.player_hp < pending_hit_from_hp_;
+    pending_hit_ = false;
+    if (!crit && still_down && cfg.laugh_on_hit) {
+      const auto cooldown_ms = static_cast<std::uint64_t>(cfg.laugh_hit_seconds * 1000.0f);
+      if (now - last_laugh_hit_ms_ >= cooldown_ms) {
+        LogWrite("event: player hit");
+        audio.Play(SoundCategory::Laugh);
+        last_laugh_hit_ms_ = now;
+      }
+    }
   }
 
   if (snap.player_valid && prev_.player_valid && prev_.in_gameplay) {
@@ -175,13 +255,9 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
           audio.Play(SoundCategory::Laugh);
           last_death_laugh_ms_ = now;
         }
-      } else if (cfg.laugh_on_hit) {
-        const auto cooldown_ms = static_cast<std::uint64_t>(cfg.laugh_hit_seconds * 1000.0f);
-        if (now - last_laugh_hit_ms_ >= cooldown_ms) {
-          LogWrite("event: player hit");
-          audio.Play(SoundCategory::Laugh);
-          last_laugh_hit_ms_ = now;
-        }
+      } else if (cfg.laugh_on_hit && !(snap.anim_valid && IsCriticalAnim(snap.current_anim))) {
+        pending_hit_ = true;
+        pending_hit_from_hp_ = prev_.player_hp;
       }
     } else if (snap.deaths > prev_.deaths) {
       if (cfg.laugh_on_death && (now - last_death_laugh_ms_) >= 2500) {
@@ -195,6 +271,12 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
   if (cfg.cheer_on_boss_bar) {
     const auto id = snap.active_boss_battle_id;
     if (id <= 0) {
+      // Fog locks for the fight, so id→0 with the player still up is the kill.
+      // Require nearby loot so walking out (or a flicker) does not applaud.
+      if (cheer_latched_battle_id_ > 0 && snap.player_hp > 0) {
+        pending_applause_battle_id_ = cheer_latched_battle_id_;
+        pending_applause_ms_ = now;
+      }
       cheer_latched_battle_id_ = 0;
     } else if (cheer_latched_battle_id_ == 0) {
       if (prev_.active_boss_battle_id <= 0) {
@@ -209,30 +291,20 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     }
   }
 
-  if (cfg.applause_on_boss_death) {
-    std::unordered_set<std::int32_t> prev_def(prev_.defeat_flags_on.begin(),
-                                              prev_.defeat_flags_on.end());
-    bool clapped = false;
-    for (const auto id : snap.defeat_flags_on) {
-      if (prev_def.count(id) != 0) {
-        continue;
-      }
-      LogWrite("event: boss defeated flag=" + std::to_string(id));
+  if (cfg.applause_on_boss_death && pending_applause_battle_id_ != 0) {
+    const bool died = snap.player_hp <= 0 || snap.deaths > prev_.deaths;
+    const bool loot_near =
+        last_loot_ms_ != 0 && last_loot_ms_ + 4000 >= pending_applause_ms_ &&
+        pending_applause_ms_ + 4000 >= last_loot_ms_;
+    if (died || now - pending_applause_ms_ > 4000) {
+      pending_applause_battle_id_ = 0;
+      pending_applause_ms_ = 0;
+    } else if (loot_near) {
+      LogWrite("event: boss defeated battle_id=" + std::to_string(pending_applause_battle_id_));
       audio.Play(SoundCategory::Applause);
-      clapped = true;
-      break;
-    }
-    if (!clapped) {
-      std::unordered_set<std::int32_t> prev_kills(prev_.boss_kills_on.begin(),
-                                                  prev_.boss_kills_on.end());
-      for (const auto off : snap.boss_kills_on) {
-        if (prev_kills.count(off) != 0) {
-          continue;
-        }
-        LogWrite("event: boss defeated kill-count off=0x" + std::to_string(off));
-        audio.Play(SoundCategory::Applause);
-        break;
-      }
+      last_applause_ms_ = now;
+      pending_applause_battle_id_ = 0;
+      pending_applause_ms_ = 0;
     }
   }
 

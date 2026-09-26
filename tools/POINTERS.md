@@ -65,7 +65,9 @@ Map ids and FMOD zone SE are **not** the title card.
 
 **Current approach (SotFS 1.03):** hook `FeSceneMapName` vt[4] (`RVA 0x684F0` / slot `0x10FA800`)
 to capture the instance; wipe when `+0x1C` changes to a PlaceName text id (`>= 100000`).
-Observed: Things Betwixt `100200`, Majula `100400`. Clear-to-`-1` (vt[3]) is ignored.
+Observed: Things Betwixt `100200`, Majula `100400`, Heide `103100`, No-man's Wharf `101800`.
+Clear-to-`-1` (vt[3]) is ignored. Connector sub-maps that change `+0x1C` with no title card
+are ignored: `103000` (`m10_30` Heide ↔ Wharf spiral) and `102900` (`m10_29` Majula ↔ Shaded Woods).
 
 `FeSubStateTitleInformation` activate is first-load-only — **not** Majula walks.
 
@@ -79,7 +81,7 @@ Observed: Things Betwixt `100200`, Majula `100400`. Clear-to-`-1` (vt[3]) is ign
 
 ## Boss applause
 
-- Primary: 6-digit defeat event flags (SoulMemory walk). **Important:** resolve EventFlagManager with a final pointer deref (SoulMemory `AddPointer` convention).
+- Primary: 6-digit defeat event flags (SoulMemory walk). **Important:** resolve EventFlagManager with a final pointer deref (SoulMemory `AddPointer` convention). The seen-flag set resets only on the title screen, so a kill that arrives on the frame gameplay returns still applauds. While `ActiveBossBattleId` is set, a new defeat flag is logged but the clap waits until that id falls to 0 and loot landed within 4s (Dragonrider: flag `100959` under the death sting, clap ~3s later with the soul). Flag/kill-count still applaud immediately when no fight is active.
 - Backup: SoulMemory boss kill-count array  
   - SotFS: `BaseA → +0x70 → +0x28 → +0x20 → +0x8`  
   - Vanilla: `BaseA → +0 → +0x44 → +0x14 → +0x10 → +0x4`  
