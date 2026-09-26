@@ -2,8 +2,6 @@
 
 Sitcom canned-audience overlay for **Dark Souls II** and **Dark Souls II: Scholar of the First Sin** (PC).
 
-## CURRENTLY ON HIATUS AND NON-FUNCTIONAL. WILL BE LOOKED AT AGAIN AFTER DS3.
-
 Plays local WAV clips when:
 
 - the player takes damage or dies (laughter; random among `laugh*.wav`)
@@ -36,7 +34,7 @@ WINEDLLOVERRIDES="dinput8.dll=n,b" %command%
 
 Put WAVs in `sitcom/sounds/` using the names below. Tweak `sitcom/config.ini`. Set `log=true` to write `sitcom/sitcom.log`.
 
-PlaceName wipe follows `FeSceneMapName` text ids (see `tools/AREA_TITLE_TRACE.md`). Set `trace_area_title=true` only to diagnose.
+PlaceName wipe follows `FeSceneMapName` text ids (see `tools/POINTERS.md`). Set `trace_area_title=true` only to diagnose.
 
 **Offline / single-player recommended.** Injected DLLs can interact badly with DS2’s online checks (softbans are poorly documented).
 
@@ -95,5 +93,3 @@ Or: `bash scripts/build-podman.sh` (builds both + packs `dist/DS2SotFS_Sitcom.zi
 5. Draws a title-menu credit (`Sitcom mod by jbg0801 2026` plus dedication)
 
 See [tools/POINTERS.md](tools/POINTERS.md) for pointer notes.
-
-To port this overlay to DS3 / Elden Ring / another Souls game, follow [tools/PORTING.md](tools/PORTING.md).

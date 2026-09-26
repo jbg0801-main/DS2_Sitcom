@@ -80,7 +80,7 @@ Connector sub-maps that change the displayed id with no title card are ignored:
 
 `FeSubStateTitleInformation` activate is first-load-only — **not** Majula walks.
 
-**Diagnosis:** `trace_area_title=true` — see `tools/AREA_TITLE_TRACE.md`.
+**Diagnosis:** set `trace_area_title=true` to log extra `area_trace:` lines. Turn it off afterwards.
 
 ## Event flags / boss counters
 
