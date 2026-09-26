@@ -248,7 +248,11 @@ bool ResolveAndHook() {
     update = reinterpret_cast<void*>(GetProcAddress(fmod, update_b));
   }
   if (!update) {
-    LogWrite("fmod: EventSystem::update export missing");
+    static bool logged = false;
+    if (!logged) {
+      LogWrite("fmod: EventSystem::update export missing");
+      logged = true;
+    }
     return false;
   }
 

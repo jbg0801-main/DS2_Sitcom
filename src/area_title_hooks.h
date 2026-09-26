@@ -2,7 +2,8 @@
 
 namespace sitcom {
 
-// SotFS PlaceName wipe via FeSceneMapName+0x1C text id changes.
+// PlaceName wipe via FeSceneMapName text id changes.
+// SotFS displayed id is +0x1C. Vanilla 1.12 displayed id is +0x10.
 void AreaTitleHooksConfigure(bool trace);
 
 bool AreaTitleHooksInit();

@@ -2,7 +2,8 @@
 
 namespace sitcom {
 
-// SotFS: hooks Estus empty-flask fail branch (shake anim path), not the decrement.
+// SotFS: observe the empty-flask fail branch. Vanilla: observe the goods-use
+// fail path that starts the empty-flask shake. Neither patch decrements charges.
 bool EstusHooksInit();
 void EstusHooksShutdown();
 int EstusHooksConsumeEmpty();

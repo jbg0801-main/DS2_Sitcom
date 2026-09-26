@@ -63,11 +63,17 @@ Bob CT Fog Walls bits are fog-cleared world flags — not fight-start.
 
 Map ids and FMOD zone SE are **not** the title card.
 
-**Current approach (SotFS 1.03):** hook `FeSceneMapName` vt[4] (`RVA 0x684F0` / slot `0x10FA800`)
-to capture the instance; wipe when `+0x1C` changes to a PlaceName text id (`>= 100000`).
-Observed: Things Betwixt `100200`, Majula `100400`, Heide `103100`, No-man's Wharf `101800`.
-Clear-to-`-1` (vt[3]) is ignored. Connector sub-maps that change `+0x1C` with no title card
-are ignored: `103000` (`m10_30` Heide ↔ Wharf spiral) and `102900` (`m10_29` Majula ↔ Shaded Woods).
+**Current approach:** hook `FeSceneMapName` vt[4] and wipe when the displayed PlaceName
+text id changes (`>= 100000`).
+
+- SotFS 1.03: vt `0x10FA7E0`, vt[4] `RVA 0x684F0` / slot `0x10FA800`, displayed id `+0x1C` (pending `+0x18`)
+- Vanilla 1.12: vt `0xEE9130`, vt[4] `RVA 0x128140` / slot `0xEE9140`, displayed id `+0x10` (pending `+0xC`).
+  The tick is `thiscall` and ends with `ret 4`.
+
+Observed (SotFS): Things Betwixt `100200`, Majula `100400`, Heide `103100`, No-man's Wharf `101800`.
+Clear-to-`-1` (vt[3]) is ignored. Ids outside `100000..9999999` are logged as `unmapped` and do not wipe.
+Connector sub-maps that change the displayed id with no title card are ignored:
+`103000` (`m10_30` Heide ↔ Wharf spiral) and `102900` (`m10_29` Majula ↔ Shaded Woods).
 
 `FeSubStateTitleInformation` activate is first-load-only — **not** Majula walks.
 
@@ -91,6 +97,11 @@ are ignored: `103000` (`m10_30` Heide ↔ Wharf spiral) and `102900` (`m10_29` M
 
 Bob SotFS CT chain (Current Animation):
 `PlayerCtrl +0xF8 → +0x38 → +0x78 → +0x20 → i32@+0x10`
+
+Vanilla 1.12 (DebugView, still true for HP `+0xFC` and PlayerData `+0x378`):
+`PlayerCtrl +0xB4` (ChrMotionCtrl) → `+0x28` (MorphemeMotionCtrl). The TAE id is not at
+the SotFS leaf, so the poll also checks i32s at `+0x10..+0x24` on that object and one
+pointer hop below it. A hit logs `anim: vanilla A→B via …`. Empty shake is still `180202`.
 
 With `laugh_on_empty_flask=true`, every anim change logs `probe: anim A→B` until empty-flask TAE is pinned.
 

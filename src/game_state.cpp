@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -311,7 +312,99 @@ std::uintptr_t ScanLoadStateSlot() {
   return static_cast<std::uintptr_t>(*reinterpret_cast<std::uint32_t*>(hit + 2));
 }
 
+int AnimRank(std::int32_t anim) {
+  if (anim == 180202) {
+    return 4;
+  }
+  if (anim == 180200 || anim == 180201) {
+    return 3;
+  }
+  if (anim >= 160000 && anim <= 199999) {
+    return 2;
+  }
+  if (anim == 900 || anim == 920) {
+    return 1;
+  }
+  return 0;
+}
+
+void NoteAnimCandidate(std::uintptr_t obj, std::uint32_t leaf, std::int32_t* best, int* best_rank,
+                       char* path, std::size_t path_n, const char* via) {
+  if (!obj) {
+    return;
+  }
+  const auto anim = ReadT<std::int32_t>(obj + leaf, -1);
+  const int rank = AnimRank(anim);
+  if (rank > *best_rank) {
+    *best_rank = rank;
+    *best = anim;
+    snprintf(path, path_n, "%s+0x%X", via, leaf);
+  }
+}
+
+// Vanilla 1.10/1.12 (Atvaark DebugView, offsets still match 1.12 HP/PlayerData):
+//   PlayerCtrl+0xB4 → ChrMotionCtrl+0x28 → MorphemeMotionCtrl
+// The SotFS Bob chain (+0xF8…) does not exist on this layout. Current TAE id is
+// an i32 near that motion graph (SotFS live value for the empty shake is 180202).
+bool TryReadVanillaAnim(std::uintptr_t player_ctrl, std::int32_t* out_anim) {
+  const auto motion = ReadPtr(player_ctrl + 0xB4);
+  if (!motion) {
+    return false;
+  }
+  std::int32_t best = 0;
+  int best_rank = 0;
+  char path[96] = "none";
+  const std::uint32_t leaves[] = {0x10, 0x14, 0x18, 0x1C, 0x20, 0x24};
+  NoteAnimCandidate(motion, 0x10, &best, &best_rank, path, sizeof(path), "motion");
+  const auto morph = ReadPtr(motion + 0x28);
+  if (morph) {
+    for (std::uint32_t leaf : leaves) {
+      NoteAnimCandidate(morph, leaf, &best, &best_rank, path, sizeof(path), "morph");
+    }
+    const std::uint32_t hops[] = {0x4, 0x8, 0xC, 0x10, 0x14, 0x18, 0x1C, 0x20, 0x28, 0x38};
+    for (std::uint32_t hop : hops) {
+      const auto child = ReadPtr(morph + hop);
+      if (!child) {
+        continue;
+      }
+      char via[48];
+      snprintf(via, sizeof(via), "morph+0x%X", hop);
+      for (std::uint32_t leaf : leaves) {
+        NoteAnimCandidate(child, leaf, &best, &best_rank, path, sizeof(path), via);
+      }
+      for (std::uint32_t hop2 : hops) {
+        const auto grand = ReadPtr(child + hop2);
+        if (!grand || grand == child || grand == morph) {
+          continue;
+        }
+        char via2[72];
+        snprintf(via2, sizeof(via2), "morph+0x%X+0x%X", hop, hop2);
+        for (std::uint32_t leaf : leaves) {
+          NoteAnimCandidate(grand, leaf, &best, &best_rank, path, sizeof(path), via2);
+        }
+      }
+    }
+  }
+  static std::int32_t prev = 0;
+  static char prev_path[96] = "";
+  if (best != prev || (best_rank > 0 && strcmp(path, prev_path) != 0 && best == 180202)) {
+    if (best_rank > 0) {
+      char buf[180];
+      snprintf(buf, sizeof(buf), "anim: vanilla %d→%d via %s", static_cast<int>(prev),
+               static_cast<int>(best), path);
+      LogWrite(buf);
+    }
+    prev = best;
+    snprintf(prev_path, sizeof(prev_path), "%s", path);
+  }
+  *out_anim = best;
+  return true;
+}
+
 bool TryReadAnim(std::uintptr_t player_ctrl, std::int32_t* out_anim) {
+  if (!IsScholar()) {
+    return TryReadVanillaAnim(player_ctrl, out_anim);
+  }
   // Bob SotFS CT: Hero/Animation/Animation Data/Current Animation
   //   GameManagerImp → +D0 (PlayerCtrl) → +F8 → +38 → +78 → +20 → i32@+10
   // Older guesses kept as fallbacks.

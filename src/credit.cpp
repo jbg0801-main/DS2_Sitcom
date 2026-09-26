@@ -517,8 +517,8 @@ namespace {
 
 constexpr wchar_t kCreditTitle[] = L"Sitcom mod by jbg0801 2026";
 constexpr wchar_t kCreditDedication[] =
-    L"This mod is dedicated to my amazing mum. I won't have her for much longer, "
-    L"and I'll never get to tell her about my projects. I'll miss you mum. I love you, "
+    L"This mod is dedicated to my amazing mum. I lost her during development, "
+    L"and I'll never get to tell her about my projects. I miss you mum. I love you, "
     L"sleep well.";
 
 using EndSceneFn = HRESULT(__stdcall*)(IDirect3DDevice9*);
@@ -562,6 +562,147 @@ HWND FindGameWindow() {
   return ctx.best;
 }
 
+// Same layout as the Scholar blit: word-break the dedication on a 560px canvas,
+// then stamp that bitmap in the corner. Drawing straight into the backbuffer
+// DC used a nearly full-frame rect, so DrawText kept the dedication on one line.
+bool RenderCreditBitmap(std::vector<uint32_t>* out_bgra, int* out_w, int* out_h) {
+  HDC screen = GetDC(nullptr);
+  HDC hdc = CreateCompatibleDC(screen);
+  HFONT title_font =
+      CreateFontW(-20, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+                  DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+  HFONT body_font =
+      CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+                  DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+
+  const int pad_x = 20;
+  const int pad_y = 12;
+  const int gap = 8;
+  const int canvas_w = 560;
+
+  HGDIOBJ old_font = title_font ? SelectObject(hdc, title_font) : nullptr;
+  SIZE title_sz{};
+  GetTextExtentPoint32W(hdc, kCreditTitle, static_cast<int>(wcslen(kCreditTitle)), &title_sz);
+
+  RECT body_measure{0, 0, canvas_w - pad_x * 2, 0};
+  if (body_font) {
+    SelectObject(hdc, body_font);
+  }
+  DrawTextW(hdc, kCreditDedication, -1, &body_measure, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+  const int body_h = body_measure.bottom - body_measure.top;
+  const int w = canvas_w;
+  const int h = pad_y + title_sz.cy + gap + body_h + pad_y + 8;
+
+  BITMAPINFO bmi{};
+  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bmi.bmiHeader.biWidth = w;
+  bmi.bmiHeader.biHeight = -h;
+  bmi.bmiHeader.biPlanes = 1;
+  bmi.bmiHeader.biBitCount = 32;
+  bmi.bmiHeader.biCompression = BI_RGB;
+
+  void* bits = nullptr;
+  HBITMAP bmp = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+  ReleaseDC(nullptr, screen);
+  if (!bmp || !bits) {
+    if (old_font) {
+      SelectObject(hdc, old_font);
+    }
+    if (title_font) {
+      DeleteObject(title_font);
+    }
+    if (body_font) {
+      DeleteObject(body_font);
+    }
+    DeleteDC(hdc);
+    return false;
+  }
+  HGDIOBJ old_bmp = SelectObject(hdc, bmp);
+  RECT fill{0, 0, w, h};
+  HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0));
+  FillRect(hdc, &fill, brush);
+  DeleteObject(brush);
+
+  SetBkMode(hdc, TRANSPARENT);
+  SetTextColor(hdc, RGB(255, 255, 255));
+
+  RECT title_rc{pad_x, pad_y, w - pad_x, pad_y + title_sz.cy};
+  if (title_font) {
+    SelectObject(hdc, title_font);
+  }
+  DrawTextW(hdc, kCreditTitle, -1, &title_rc, DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX | DT_NOCLIP);
+
+  RECT body_rc{pad_x, pad_y + title_sz.cy + gap, w - pad_x, h - pad_y};
+  if (body_font) {
+    SelectObject(hdc, body_font);
+  }
+  DrawTextW(hdc, kCreditDedication, -1, &body_rc, DT_WORDBREAK | DT_RIGHT | DT_NOPREFIX);
+
+  if (old_font) {
+    SelectObject(hdc, old_font);
+  }
+  if (title_font) {
+    DeleteObject(title_font);
+  }
+  if (body_font) {
+    DeleteObject(body_font);
+  }
+
+  const auto* src = static_cast<const uint32_t*>(bits);
+  int min_x = w;
+  int min_y = h;
+  int max_x = 0;
+  int max_y = 0;
+  for (int y = 0; y < h; ++y) {
+    for (int x = 0; x < w; ++x) {
+      const uint32_t p = src[y * w + x] & 0x00FFFFFFu;
+      if (p != 0) {
+        if (x < min_x) {
+          min_x = x;
+        }
+        if (y < min_y) {
+          min_y = y;
+        }
+        if (x > max_x) {
+          max_x = x;
+        }
+        if (y > max_y) {
+          max_y = y;
+        }
+      }
+    }
+  }
+  if (max_x < min_x) {
+    SelectObject(hdc, old_bmp);
+    DeleteObject(bmp);
+    DeleteDC(hdc);
+    return false;
+  }
+  const int crop_pad = 10;
+  min_x = (min_x > crop_pad) ? (min_x - crop_pad) : 0;
+  min_y = (min_y > crop_pad) ? (min_y - crop_pad) : 0;
+  max_x = (max_x + crop_pad < w) ? (max_x + crop_pad) : (w - 1);
+  max_y = (max_y + crop_pad < h) ? (max_y + crop_pad) : (h - 1);
+  const int cw = max_x - min_x + 1;
+  const int ch = max_y - min_y + 1;
+
+  out_bgra->resize(static_cast<size_t>(cw * ch));
+  for (int y = 0; y < ch; ++y) {
+    for (int x = 0; x < cw; ++x) {
+      (*out_bgra)[static_cast<size_t>(y * cw + x)] = src[(min_y + y) * w + (min_x + x)];
+    }
+  }
+
+  SelectObject(hdc, old_bmp);
+  DeleteObject(bmp);
+  DeleteDC(hdc);
+  *out_w = cw;
+  *out_h = ch;
+  return true;
+}
+
 void DrawCreditD3D9(IDirect3DDevice9* device) {
   if (!device) {
     return;
@@ -576,40 +717,49 @@ void DrawCreditD3D9(IDirect3DDevice9* device) {
     return;
   }
 
-  RECT rc{};
   D3DSURFACE_DESC desc{};
   back->GetDesc(&desc);
-  SetBkMode(hdc, TRANSPARENT);
-  SetTextColor(hdc, RGB(255, 255, 255));
-  HFONT title_font =
-      CreateFontW(-20, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
-                  DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-  HFONT body_font =
-      CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
-                  DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-  const int w = static_cast<int>(desc.Width);
-  const int pad = (w > 80) ? (w / 28) : 24;
-  RECT title_rc{pad, 12, w - pad, 40};
-  if (title_font) {
-    SelectObject(hdc, title_font);
+  std::vector<uint32_t> pixels;
+  int tw = 0;
+  int th = 0;
+  if (!RenderCreditBitmap(&pixels, &tw, &th) || tw <= 0 || th <= 0) {
+    back->ReleaseDC(hdc);
+    back->Release();
+    return;
   }
-  DrawTextW(hdc, kCreditTitle, -1, &title_rc, DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX);
-  RECT body_rc{pad, 40, w - pad, 160};
-  if (body_font) {
-    SelectObject(hdc, body_font);
+
+  HDC mem = CreateCompatibleDC(hdc);
+  BITMAPINFO bmi{};
+  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bmi.bmiHeader.biWidth = tw;
+  bmi.bmiHeader.biHeight = -th;
+  bmi.bmiHeader.biPlanes = 1;
+  bmi.bmiHeader.biBitCount = 32;
+  bmi.bmiHeader.biCompression = BI_RGB;
+  void* bits = nullptr;
+  HBITMAP bmp = CreateDIBSection(mem, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+  if (!bmp || !bits) {
+    DeleteDC(mem);
+    back->ReleaseDC(hdc);
+    back->Release();
+    return;
   }
-  DrawTextW(hdc, kCreditDedication, -1, &body_rc, DT_WORDBREAK | DT_RIGHT | DT_NOPREFIX);
-  if (title_font) {
-    DeleteObject(title_font);
-  }
-  if (body_font) {
-    DeleteObject(body_font);
-  }
+  std::memcpy(bits, pixels.data(), pixels.size() * sizeof(uint32_t));
+  HGDIOBJ old_bmp = SelectObject(mem, bmp);
+
+  const int bw = static_cast<int>(desc.Width);
+  const int bh = static_cast<int>(desc.Height);
+  const int margin_x = (bw > 80) ? (bw / 28) : 24;
+  const int margin_y = (bh > 40) ? (bh / 36) : 8;
+  const int dstx = (bw > tw + margin_x) ? (bw - tw - margin_x) : 0;
+  const int dsty = margin_y;
+  BitBlt(hdc, dstx, dsty, tw, th, mem, 0, 0, SRCCOPY);
+
+  SelectObject(mem, old_bmp);
+  DeleteObject(bmp);
+  DeleteDC(mem);
   back->ReleaseDC(hdc);
   back->Release();
-  (void)rc;
   if (!g_logged_draw) {
     LogWrite("credit: drew title credit via D3D9 EndScene");
     g_logged_draw = true;

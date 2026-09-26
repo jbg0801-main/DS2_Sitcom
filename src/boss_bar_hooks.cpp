@@ -175,7 +175,8 @@ bool BossBarHooksInit() {
   }
   if (!IsScholar()) {
     LogWrite("boss_bar: FeSceneBossHpGuage hook is SotFS-only for now");
-    return false;
+    g_ready.store(true, std::memory_order_relaxed);
+    return true;
   }
   const auto base = GameBase();
   if (!base) {
@@ -205,7 +206,7 @@ void BossBarHooksShutdown() {
 }
 
 void BossBarHooksPoll() {
-  if (!g_ready.load(std::memory_order_relaxed)) {
+  if (!g_ready.load(std::memory_order_relaxed) || !IsScholar()) {
     return;
   }
   void* bar = g_boss_bar.load(std::memory_order_acquire);
