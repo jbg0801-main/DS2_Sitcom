@@ -1,4 +1,4 @@
-# Pointer notes — DS2 Sitcom
+# Pointer notes: DS2 Sitcom
 
 Offsets and AOBs are sourced from DS2S-META (pseudostripy / Nordgaren), SoulMemory / SoulSplitter (Frank van der Stam), Lord Radai / Atvaark CE tables, and the soulsmodding character-id list. Credit to those authors.
 
@@ -58,13 +58,13 @@ Cheer on rising edge `0 → nonzero`. Latch while id stays set; clear when id re
 
 **TRACE (optional):** `trace_boss_bar=true` hooks `FeSceneBossHpGuage` vt[4]
 (`vtable 0x10B0C68`, slot `0x10B0C88`, tick `0x60F00`) and logs `+0xD0/+0xB8…` field changes.
-Do **not** hook `FeSceneEnemyHpGuage` (lock-on trash).
+Leave `FeSceneEnemyHpGuage` alone. It is the lock-on gauge.
 
-Bob CT Fog Walls bits are fog-cleared world flags — not fight-start.
+Bob CT Fog Walls bits are fog-cleared world flags.
 
 ## Area wipe (PlaceName title card)
 
-Map ids and FMOD zone SE are **not** the title card.
+The title card is the displayed PlaceName text id. Map ids and FMOD zone SE are separate.
 
 **Current approach:** hook `FeSceneMapName` vt[4] and wipe when the displayed PlaceName
 text id changes (`>= 100000`).
@@ -78,7 +78,7 @@ Clear-to-`-1` (vt[3]) is ignored. Ids outside `100000..9999999` are logged as `u
 Connector sub-maps that change the displayed id with no title card are ignored:
 `103000` (`m10_30` Heide ↔ Wharf spiral) and `102900` (`m10_29` Majula ↔ Shaded Woods).
 
-`FeSubStateTitleInformation` activate is first-load-only — **not** Majula walks.
+`FeSubStateTitleInformation` activate is first-load-only. Majula walks use `FeSceneMapName`.
 
 **Diagnosis:** set `trace_area_title=true` to log extra `area_trace:` lines. Turn it off afterwards.
 
@@ -86,7 +86,7 @@ Connector sub-maps that change the displayed id with no title card are ignored:
 
 - SoulMemory chains: EventFlagManager `BaseA → +0x70 → +0x20`, boss kills `→ +0x70 → +0x28 → +0x20 → +0x8`.
 - Prefer SoulMemory GameManagerImp AOB `48 8B 35 … 48 8B E9 48 85 F6`.
-- EventManager is often **null on the title screen** — resolve again once `player_valid`.
+- EventManager is often null on the title screen. Resolve again once `player_valid`.
 
 ## Boss applause
 
@@ -113,12 +113,12 @@ With `laugh_on_empty_flask=true`, every anim change logs `probe: anim A→B` unt
 - **SotFS AOB:** `48 89 5C 24 18 56 57 41 56 48 83 EC 30 45 8B F1 41`
 - **Vanilla AOB:** `55 8B EC 83 EC 10 53 8B 5D 0C 56 8B 75 08 57 53 56 8B F9`
 - Filtered restock ids: Estus `0x0395E478`, empty Estus `0x0395E860`, Sublime Bone Dust `0x039B8DB0`
-- Pickup anim 7520/7522 kept as a tentative second trigger — confirm TAE in CE (`log=true`)
+- Pickup anim 7520/7522 is a second trigger. Confirm the TAE in CE (`log=true`)
 
 ## Player anim (fail laughs)
 
 Bob SotFS CT: `PlayerCtrl+0xF8 → +0x38 → +0x78 → +0x20 → +0x10`. Empty flask / locked use /
-fail-cast / ladder-fall IDs still tentative — use `probe: anim` logs to pin them.
+fail-cast / ladder-fall IDs are still tentative. Pin them from `probe: anim` logs.
 
 ## Empty Estus
 
@@ -127,8 +127,7 @@ Primary signal is Bob Current Animation (chain `PlayerCtrl+0xF8→+0x38→+0x78�
 - filled chug: `180200 → 900 → **180201** → 920`
 
 The Estus charge helper (~`RVA 0x1AE080`) only runs on filled drinks (`0x1AE0BF` decrement).
-Empty use never enters that function (fail branch at `0x1AE0D3` stays cold) — do not patch the
-decrement site (`rax` clobber → infinite Estus).
+Empty use leaves the fail branch at `0x1AE0D3` cold. Leave the decrement site alone (`rax` clobber makes Estus infinite).
 
 ## Sound Effect volume
 

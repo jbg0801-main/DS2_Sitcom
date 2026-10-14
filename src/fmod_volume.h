@@ -6,7 +6,7 @@ namespace sitcom {
 bool FmodVolumeInit();
 void FmodVolumeShutdown();
 
-// Returns true and writes 0–1 linear gain matching the in-game Sounds slider when known.
+// Writes the in-game Sounds slider as a 0 to 1 gain. Returns false until that read exists.
 bool FmodTryGetSfxVolume(float* out_volume);
 
 }  // namespace sitcom

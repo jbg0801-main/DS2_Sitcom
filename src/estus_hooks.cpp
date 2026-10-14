@@ -17,8 +17,7 @@ namespace {
 // Bob SotFS Estus charge function (prologue ~0x1AE080):
 //   success: movzx ecx,[rax+24h]; lea edx,[rcx-1]; … jmp setter   @ 0x1AE0BF
 //   empty:   xor ecx,ecx; lea edx,[rcx-1]; … jmp setter           @ 0x1AE0D3
-// Empty drinks take the fail branch (unique shake/head-shake anim) and never
-// reach the decrement site — hook that branch only so filled chugs stay virgin.
+// Empty drinks take the fail branch. Hook that branch. Leave the decrement site alone.
 
 std::atomic<int> g_empty_hits{0};
 std::atomic<int> g_motion_seq{0};
@@ -113,7 +112,7 @@ bool InstallHook(void* target, std::uintptr_t game_base) {
   std::memcpy(g_hook.stolen, target, kPatch);
 
   // Replay xor/lea/mov/add/pop (13 bytes), then abs-jmp to shared setter.
-  // (Patch steals the first byte of the original rel32 jmp — do not copy it.)
+  // The patch covers the first byte of the original rel32 jmp. Replay the 13 bytes before it.
   constexpr SIZE_T kBody = 13;
   std::memcpy(g_hook.trampoline, g_hook.stolen, kBody);
   g_hook.trampoline[kBody] = 0xFF;

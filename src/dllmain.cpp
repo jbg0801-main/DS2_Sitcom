@@ -60,7 +60,7 @@ DWORD WINAPI WorkerMain(LPVOID) {
 
   if (!FileExists(ini_path)) {
     cfg.log = true;
-    LogWrite("worker: config missing — using defaults with logging on");
+    LogWrite("worker: config missing, using defaults with logging on");
   }
   if ((cfg.trace_area_title || cfg.trace_boss_bar) && !cfg.log) {
     cfg.log = true;
@@ -114,20 +114,20 @@ DWORD WINAPI WorkerMain(LPVOID) {
   ItemHooksInit();
   EstusHooksInit();
 
-  // Attach FMOD only after the game is up — IAT/inline hooks, no LoadLibrary, no probes.
+  // Attach FMOD after the game is up. IAT and inline hooks only.
   if (FmodVolumeInit()) {
     float se = 1.f;
     if (FmodTryGetSfxVolume(&se)) {
       audio.SetGameSfxVolume(se);
     }
   } else {
-    LogWrite("fmod: not ready yet — will retry while polling");
+    LogWrite("fmod: waiting, will retry while polling");
   }
   if (!AreaTitleHooksInit()) {
-    LogWrite("area_title: MapName PlaceName hook not ready — will retry while polling");
+    LogWrite("area_title: MapName PlaceName hook waiting, will retry while polling");
   }
   if (!BossBarHooksInit()) {
-    LogWrite("boss_bar: FeSceneBossHpGuage hook not ready — will retry while polling");
+    LogWrite("boss_bar: FeSceneBossHpGuage hook waiting, will retry while polling");
   }
 
   EventDetector events;
@@ -213,7 +213,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
       }
 
       g_running = true;
-      // CreateThread (not std::thread) — safer from DllMain under loader lock / Wine.
+      // CreateThread from DllMain. std::thread is unsafe under the loader lock.
       g_worker_thread = CreateThread(nullptr, 0, WorkerMain, nullptr, 0, nullptr);
       break;
     }

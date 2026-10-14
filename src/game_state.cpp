@@ -81,7 +81,7 @@ bool LooksLikePackedMapId(std::int32_t id) {
 }
 
 bool LooksLikeDecimalMapId(std::int32_t id) {
-  // e.g. 10040000 — reject loose matches like 20780552 (false +0x30 hit).
+  // 10040000 is a map id. 20780552 is a false +0x30 hit.
   if (id < 10000000 || id > 50999999 || (id % 10000) != 0) {
     return false;
   }
@@ -501,6 +501,122 @@ void GameState::Shutdown() {
   boss_counters_ = 0;
 }
 
+void NoteScholarSessionHp(std::uintptr_t base_a, std::uintptr_t player_ctrl, const GameSnapshot& s) {
+  if (!IsScholar() || !player_ctrl) {
+    return;
+  }
+
+  static std::uintptr_t prev_ctrl = 0;
+  static std::int32_t prev_hp = 0;
+  static bool have_hp = false;
+  if (player_ctrl != prev_ctrl) {
+    prev_ctrl = player_ctrl;
+    prev_hp = s.player_hp;
+    have_hp = s.player_valid;
+  } else if (have_hp && s.player_valid && s.player_hp != prev_hp) {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "hp: ctrl=0x%llX %d→%d anim=%d",
+             static_cast<unsigned long long>(player_ctrl), static_cast<int>(prev_hp),
+             static_cast<int>(s.player_hp), s.anim_valid ? static_cast<int>(s.current_anim) : -1);
+    LogWrite(buf);
+    prev_hp = s.player_hp;
+  } else if (s.player_valid) {
+    prev_hp = s.player_hp;
+    have_hp = true;
+  }
+
+  const auto root = ReadPtr(base_a + 0x18);
+  if (!root || !IsReadable(root, 0x100)) {
+    return;
+  }
+
+  std::uintptr_t found[24]{};
+  int found_n = 0;
+  const auto keep = [&](std::uintptr_t chr) {
+    if (!chr || chr == player_ctrl || found_n >= 24) {
+      return;
+    }
+    for (int i = 0; i < found_n; ++i) {
+      if (found[i] == chr) {
+        return;
+      }
+    }
+    if (!IsReadable(chr + 0x168, 12)) {
+      return;
+    }
+    const auto hp = ReadT<std::int32_t>(chr + 0x168, -1);
+    const auto max_hp = ReadT<std::int32_t>(chr + 0x170, -1);
+    if (max_hp <= 0 || max_hp > 99999 || hp < 0 || hp > 99999) {
+      return;
+    }
+    found[found_n++] = chr;
+  };
+
+  const auto walk_vec = [&](std::uintptr_t begin, std::uintptr_t end) {
+    if (!begin || !end || end <= begin) {
+      return;
+    }
+    const auto bytes = end - begin;
+    if (bytes % sizeof(std::uintptr_t) != 0) {
+      return;
+    }
+    const auto count = bytes / sizeof(std::uintptr_t);
+    if (count == 0 || count > 48 || !IsReadable(begin, count * sizeof(std::uintptr_t))) {
+      return;
+    }
+    for (std::size_t i = 0; i < count && found_n < 24; ++i) {
+      keep(ReadPtr(begin + i * sizeof(std::uintptr_t)));
+    }
+  };
+
+  walk_vec(ReadPtr(root), ReadPtr(root + 8));
+  for (int slot = 0; slot < 32 && found_n < 24; ++slot) {
+    const auto child = ReadPtr(root + static_cast<std::uintptr_t>(slot) * sizeof(std::uintptr_t));
+    keep(child);
+    if (child && IsReadable(child, 0x18)) {
+      walk_vec(ReadPtr(child), ReadPtr(child + 8));
+    }
+  }
+
+  struct SibHp {
+    std::uintptr_t chr = 0;
+    std::int32_t hp = 0;
+    bool used = false;
+  };
+  static SibHp sibs[24]{};
+  for (int i = 0; i < found_n; ++i) {
+    const auto chr = found[i];
+    const auto hp = ReadT<std::int32_t>(chr + 0x168);
+    const auto max_hp = ReadT<std::int32_t>(chr + 0x170);
+    int slot = -1;
+    int free_slot = -1;
+    for (int j = 0; j < 24; ++j) {
+      if (sibs[j].used && sibs[j].chr == chr) {
+        slot = j;
+        break;
+      }
+      if (!sibs[j].used && free_slot < 0) {
+        free_slot = j;
+      }
+    }
+    if (slot < 0) {
+      if (free_slot < 0) {
+        continue;
+      }
+      sibs[free_slot] = {chr, hp, true};
+      continue;
+    }
+    if (sibs[slot].hp != hp) {
+      char buf[128];
+      snprintf(buf, sizeof(buf), "hp-sib: chr=0x%llX %d→%d max=%d",
+               static_cast<unsigned long long>(chr), static_cast<int>(sibs[slot].hp),
+               static_cast<int>(hp), static_cast<int>(max_hp));
+      LogWrite(buf);
+      sibs[slot].hp = hp;
+    }
+  }
+}
+
 GameSnapshot GameState::Read() {
   GameSnapshot s{};
   if (!ready_ || !base_a_slot_) {
@@ -549,17 +665,17 @@ GameSnapshot GameState::Read() {
       s.current_anim = anim;
       s.anim_valid = true;
     }
+    NoteScholarSessionHp(base_a, player_ctrl, s);
   }
 
-  // Wipe signal: current map id, preferring anything that is NOT LastSetBonfireAreaID
-  // (Betwixt→Majula is seamless — bonfire area stays Betwixt until you rest).
+  // Wipe signal: current map id. LastSetBonfireAreaID stays on the old area during a walk.
   {
     std::int32_t map_id = 0;
     int map_tag = -1;
     if (TryReadCurrentMapId(base_a, off, &map_id, &map_tag)) {
       s.area_id = map_id;
       s.area_valid = true;
-      // tag < 0 ⇒ bonfire fallback only (not safe for seamless wipe).
+      // tag < 0 is the bonfire-area fallback.
       s.area_is_map_manager = (map_tag >= 0);
       MaybeLogMapProbe(0, map_id, map_tag);
     } else if (s.player_valid) {
@@ -569,7 +685,7 @@ GameSnapshot GameState::Read() {
 
   s.in_gameplay = s.player_valid && !s.is_loading && s.game_state == kGameStateInGame;
 
-  // EventManager / boss kill array are often null on the title screen — retry in-game.
+  // EventManager and the boss kill array are often null on the title screen. Retry in-game.
   if (s.player_valid) {
     if (!g_event_flags.Ready()) {
       g_event_flags.EnsureReady();

@@ -93,7 +93,7 @@ void ReleaseDeviceObjects() {
 bool RenderTextBitmap(std::vector<uint32_t>* out_bgra, int* out_w, int* out_h) {
   HDC screen = GetDC(nullptr);
   HDC hdc = CreateCompatibleDC(screen);
-  // ANTIALIASED (not ClearType) — ClearType overhang is often clipped under Wine/Proton.
+  // ANTIALIASED. ClearType overhang is often clipped under Wine/Proton.
   // Fixed wide canvas: Wine GetTextExtent can under-measure, which was cutting "2026".
   HFONT title_font =
       CreateFontW(-20, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
@@ -263,7 +263,7 @@ bool EnsureCreditTexture(ID3D11Device* device, DXGI_FORMAT format) {
   if (format == DXGI_FORMAT_R8G8B8A8_UNORM || format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
     BgraToRgba(&pixels);
   } else if (format != DXGI_FORMAT_B8G8R8A8_UNORM && format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB) {
-    // Fall back to BGRA upload; copy may fail if mismatched — caller logs.
+    // BGRA upload. The caller logs a failed copy.
   }
 
   D3D11_TEXTURE2D_DESC td{};
@@ -280,7 +280,7 @@ bool EnsureCreditTexture(ID3D11Device* device, DXGI_FORMAT format) {
   init.pSysMem = pixels.data();
   init.SysMemPitch = static_cast<UINT>(w * 4);
   if (FAILED(device->CreateTexture2D(&td, &init, &g_tex))) {
-    // Some backbuffers are typeless — retry as UNORM BGRA.
+    // Typeless backbuffers: retry as UNORM BGRA.
     td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     if (format == DXGI_FORMAT_R8G8B8A8_UNORM || format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
       // pixels already swapped to RGBA; rebuild BGRA
@@ -382,7 +382,7 @@ bool DrawCreditD3D(IDXGISwapChain* swap) {
   box.bottom = th;
   box.back = 1;
 
-  // Blit opaque credit bar onto the backbuffer — no shaders / d3dcompiler needed.
+  // Blit the credit bar onto the backbuffer.
   g_ctx->CopySubresourceRegion(back, 0, dstx, dsty, 0, g_tex, 0, &box);
   back->Release();
 
@@ -468,8 +468,7 @@ bool InstallPresentHook() {
 
 void CreditUpdate(bool on_title_screen) {
   g_want_credit.store(on_title_screen, std::memory_order_relaxed);
-  // Only patch Present once we actually see the title menu — avoids touching DXGI
-  // during early boot.
+  // Patch Present once the title menu is up.
   if (!on_title_screen) {
     return;
   }

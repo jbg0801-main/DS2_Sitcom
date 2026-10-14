@@ -63,7 +63,7 @@ Ds2Offsets VanillaOffsets() {
   o.last_bonfire_area_from_event_manager = 0xB4;
   // META only documents SotFS LoadedEnemiesTable; try the same BaseA+0x18 hop.
   o.loaded_enemies_from_base_a = 0x18;
-  // No META MapManager for vanilla — leave -1 (do not use bonfire area for wipe).
+  // Vanilla has no META MapManager. -1 skips it.
   o.map_manager_from_base_a = -1;
   o.load_state_flag_off = 0x1D4;
   // Game code reads flags at *(BaseA+0x44)+0x10. SoulMemory's extra leading

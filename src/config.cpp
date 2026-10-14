@@ -42,7 +42,7 @@ bool ParseBoolToken(const wchar_t* raw, bool fallback) {
 
 bool ReadBool(const wchar_t* section, const wchar_t* key, bool fallback,
               const std::wstring& path) {
-  // GetPrivateProfileIntW does NOT parse "true"/"false" — only integers.
+  // GetPrivateProfileIntW reads integers. "true" and "false" are handled below.
   // A present key with value "true" was previously read as 0 → everything off.
   wchar_t buf[64];
   const DWORD n =

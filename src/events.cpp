@@ -34,9 +34,13 @@ bool IsGoodsProbeAnim(std::int32_t anim) {
 }
 bool IsLockedUseAnim(std::int32_t anim) { return anim == 7510 || anim == 2020 || anim == 2021; }
 
-// Backstab / riposte band seen in probe logs the poll after a false hit laugh.
-bool IsCriticalAnim(std::int32_t anim) {
-  return (anim >= 160000 && anim <= 160999) || (anim >= 190000 && anim <= 190999);
+bool IsCriticalAnim(std::int32_t anim) { return anim >= 160000 && anim <= 199999; }
+
+bool IsPoisonTick(int dmg, std::int32_t last_drop, std::uint64_t last_ms, std::uint64_t now) {
+  if (dmg == 1) {
+    return true;
+  }
+  return dmg > 1 && dmg <= 12 && dmg == last_drop && last_ms != 0 && now - last_ms < 2000;
 }
 
 bool AnimEntered(const GameSnapshot& snap, const GameSnapshot& prev, bool (*pred)(std::int32_t)) {
@@ -49,7 +53,7 @@ bool TryFailLaugh(std::uint64_t now, std::uint64_t* last_ms, float cooldown_sec,
   if (now - *last_ms < cd) {
     return false;
   }
-  LogWrite(std::string("event: fail laugh — ") + label);
+  LogWrite(std::string("event: fail laugh: ") + label);
   audio.Play(SoundCategory::Laugh);
   *last_ms = now;
   return true;
@@ -77,6 +81,14 @@ void EventDetector::Reset() {
   last_applause_ms_ = 0;
   pending_hit_ = false;
   pending_hit_from_hp_ = 0;
+  pending_death_ = false;
+  pending_death_prev_hp_ = 0;
+  pending_death_hp_ = 0;
+  pending_death_prev_deaths_ = 0;
+  pending_death_deaths_ = 0;
+  last_hit_drop_ = 0;
+  last_hit_drop_ms_ = 0;
+  last_crit_ms_ = 0;
   applause_baselined_ = false;
   seen_defeat_flags_.clear();
   seen_kill_offsets_.clear();
@@ -89,7 +101,7 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
 
   const auto now = static_cast<std::uint64_t>(GetTickCount64());
 
-  // PlaceName wipe — FeSceneMapName+0x1C place-id edges (Betwixt, Majula, …).
+  // PlaceName wipe: FeSceneMapName place-id edges (Betwixt, Majula).
   AreaTitleHooksPoll();
   BossBarHooksPoll();
   if (cfg.wipe_on_area_title && !snap.on_title_screen && AreaTitleHooksPending() > 0 &&
@@ -158,15 +170,44 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     seen_kill_offsets_.clear();
   }
 
-  // Death often drives HP negative in one poll, which clears player_valid / in_gameplay
-  // before the in-gameplay HP branch runs. Catch it on that edge (and deaths++).
-  if (prev_.in_gameplay && cfg.laugh_on_death) {
+  if (pending_death_) {
+    const bool left_gameplay = !snap.in_gameplay;
+    const bool hp_down = snap.player_hp <= 0;
+    const bool counter_and_down =
+        snap.deaths > pending_death_prev_deaths_ && snap.player_hp < pending_death_prev_hp_;
+    if (left_gameplay || hp_down || counter_and_down) {
+      if (cfg.laugh_on_death && (now - last_death_laugh_ms_) >= 2500) {
+        LogWrite(hp_down || left_gameplay ? "event: player death" : "event: death counter increased");
+        audio.Play(SoundCategory::Laugh);
+        last_death_laugh_ms_ = now;
+      }
+    } else {
+      char buf[160];
+      snprintf(buf, sizeof(buf), "event: ignore death blip hp=%d→%d→%d deaths=%d→%d",
+               static_cast<int>(pending_death_prev_hp_), static_cast<int>(pending_death_hp_),
+               static_cast<int>(snap.player_hp), static_cast<int>(pending_death_prev_deaths_),
+               static_cast<int>(snap.deaths));
+      LogWrite(buf);
+    }
+    pending_death_ = false;
+  }
+
+  const auto arm_death = [&]() {
+    if (pending_death_ || !cfg.laugh_on_death) {
+      return;
+    }
+    pending_death_ = true;
+    pending_death_prev_hp_ = prev_.player_hp;
+    pending_death_hp_ = snap.player_hp;
+    pending_death_prev_deaths_ = prev_.deaths;
+    pending_death_deaths_ = snap.deaths;
+  };
+
+  if (prev_.in_gameplay) {
     const bool hp_killed = prev_.player_hp > 0 && snap.player_hp <= 0;
     const bool deaths_up = snap.deaths > prev_.deaths;
-    if ((hp_killed || deaths_up) && (now - last_death_laugh_ms_) >= 2500) {
-      LogWrite(hp_killed ? "event: player death" : "event: death counter increased");
-      audio.Play(SoundCategory::Laugh);
-      last_death_laugh_ms_ = now;
+    if (hp_killed || deaths_up) {
+      arm_death();
     }
   }
 
@@ -180,8 +221,7 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     return;
   }
 
-  // Defeat flags survive a gameplay blip. Baseline only the first in-game sample
-  // after the title screen — a flag that appears when gameplay returns still applauds.
+  // Baseline defeat flags on the first in-game sample after the title screen.
   if (cfg.applause_on_boss_death) {
     if (!applause_baselined_) {
       seen_defeat_flags_.insert(snap.defeat_flags_on.begin(), snap.defeat_flags_on.end());
@@ -231,8 +271,13 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
     return;
   }
 
+  if (snap.anim_valid && IsCriticalAnim(snap.current_anim)) {
+    last_crit_ms_ = now;
+  }
+  const bool crit_hold = last_crit_ms_ != 0 && now - last_crit_ms_ < 800;
+
   if (pending_hit_) {
-    const bool crit = snap.anim_valid && IsCriticalAnim(snap.current_anim);
+    const bool crit = crit_hold || (snap.anim_valid && IsCriticalAnim(snap.current_anim));
     const bool still_down = snap.player_valid && snap.player_hp < pending_hit_from_hp_;
     pending_hit_ = false;
     if (!crit && still_down && cfg.laugh_on_hit) {
@@ -248,23 +293,21 @@ void EventDetector::Update(const GameSnapshot& snap, const Config& cfg, Audio& a
   if (snap.player_valid && prev_.player_valid && prev_.in_gameplay) {
     const bool max_hp_changed = snap.player_max_hp != prev_.player_max_hp;
     if (!max_hp_changed && snap.player_hp < prev_.player_hp) {
+      const int dmg = prev_.player_hp - snap.player_hp;
+      const bool dot = IsPoisonTick(dmg, last_hit_drop_, last_hit_drop_ms_, now);
+      if (dmg > 0) {
+        last_hit_drop_ = dmg;
+        last_hit_drop_ms_ = now;
+      }
       if (snap.player_hp <= 0) {
-        // Usually handled on the gameplay-exit edge; keep as in-game backup.
-        if (cfg.laugh_on_death && (now - last_death_laugh_ms_) >= 2500) {
-          LogWrite("event: player death");
-          audio.Play(SoundCategory::Laugh);
-          last_death_laugh_ms_ = now;
-        }
-      } else if (cfg.laugh_on_hit && !(snap.anim_valid && IsCriticalAnim(snap.current_anim))) {
+        arm_death();
+      } else if (!dot && cfg.laugh_on_hit && !crit_hold &&
+                 !(snap.anim_valid && IsCriticalAnim(snap.current_anim))) {
         pending_hit_ = true;
         pending_hit_from_hp_ = prev_.player_hp;
       }
     } else if (snap.deaths > prev_.deaths) {
-      if (cfg.laugh_on_death && (now - last_death_laugh_ms_) >= 2500) {
-        LogWrite("event: death counter increased");
-        audio.Play(SoundCategory::Laugh);
-        last_death_laugh_ms_ = now;
-      }
+      arm_death();
     }
   }
 

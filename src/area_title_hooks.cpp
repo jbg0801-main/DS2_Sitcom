@@ -17,7 +17,7 @@ namespace {
 // Live Proton trace (Betwixt→Majula): displayed PlaceName text id.
 //   Betwixt:  … → 100200
 //   Majula:   100200 → 100400
-// TitleInformation activate only fires on some first-load cards — not Majula walks.
+// TitleInformation activate fires on some first-load cards. Majula walks use FeSceneMapName.
 // FeSceneMapName vt[4] is a hot tick (capture `this` only). vt[3] clears the
 // displayed id to -1. SotFS stores it at +0x1C (pending +0x18). Vanilla 1.12
 // stores it at +0x10 (pending +0xC). vt[4] is thiscall and returns `ret 4`.
@@ -196,7 +196,7 @@ bool AreaTitleHooksInit() {
   }
   g_ready.store(true, std::memory_order_relaxed);
   if (g_trace.load(std::memory_order_relaxed)) {
-    LogWrite("area_title: TRACE ON — MapName displayed PlaceName ids");
+    LogWrite("area_title: TRACE ON, MapName displayed PlaceName ids");
   } else {
     char buf[96];
     snprintf(buf, sizeof(buf), "area_title: FeSceneMapName hooked (PlaceName via +0x%X)", kPlaceOff);
@@ -253,8 +253,7 @@ void AreaTitleHooksPoll() {
     LogWrite(buf);
   }
 
-  // Clear-to-idle is not a card. Anything else outside the known band is logged
-  // so a live session can pin a new id without another build.
+  // Id < 0 is the idle clear. Other ids outside the known band are logged.
   if (id < 0) {
     return;
   }
@@ -266,7 +265,7 @@ void AreaTitleHooksPoll() {
     return;
   }
 
-  // Rising/change to a real PlaceName id (not a connector sub-map).
+  // PlaceName id changed. Connector sub-maps are skipped below.
   if (id != prev) {
     if (IsConnectorPlaceId(id)) {
       char buf[96];

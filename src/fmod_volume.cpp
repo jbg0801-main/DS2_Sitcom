@@ -12,12 +12,8 @@
 namespace sitcom {
 namespace {
 
-// DSR uses FMOD C++ EventSystem::update. A permanent 14-byte trampoline hook
-// captured SE volume then crashed on the resume (instruction boundary).
-//
-// Fix: one-shot hook — on first update(), read SE via C GetCategory/GetVolume,
-// restore the original prologue, then call the real function. After that we only
-// poll GetVolume on the cached SE category (tracks the Sounds slider, no hooks).
+// One-shot hook on EventSystem::update. Read SE, restore the prologue, call update().
+// Later polls use the cached category.
 
 using FmodResult = int;
 using EventSystem = void;
@@ -46,7 +42,7 @@ std::atomic<bool> g_captured{false};
 
 struct InlineHook {
   void* target = nullptr;
-  uint8_t* trampoline = nullptr;  // unused for call — only holds stolen bytes path if needed
+  uint8_t* trampoline = nullptr;
   uint8_t stolen[16]{};
   bool active = false;
 };

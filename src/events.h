@@ -37,9 +37,16 @@ class EventDetector {
   std::uint64_t pending_applause_ms_ = 0;
   std::uint64_t last_loot_ms_ = 0;
   std::uint64_t last_applause_ms_ = 0;
-  // Hit laugh waits one poll so a backstab/critical anim can cancel it.
   bool pending_hit_ = false;
   std::int32_t pending_hit_from_hp_ = 0;
+  bool pending_death_ = false;
+  std::int32_t pending_death_prev_hp_ = 0;
+  std::int32_t pending_death_hp_ = 0;
+  std::int32_t pending_death_prev_deaths_ = 0;
+  std::int32_t pending_death_deaths_ = 0;
+  std::int32_t last_hit_drop_ = 0;
+  std::uint64_t last_hit_drop_ms_ = 0;
+  std::uint64_t last_crit_ms_ = 0;
   // Defeat/kill baselines survive gameplay blips; cleared only on the title screen.
   bool applause_baselined_ = false;
   std::unordered_set<std::int32_t> seen_defeat_flags_;

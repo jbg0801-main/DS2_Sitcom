@@ -5,9 +5,9 @@ Sitcom canned-audience overlay for **Dark Souls II** and **Dark Souls II: Schola
 Plays local WAV clips when:
 
 - the player takes damage or dies (laughter; random among `laugh*.wav`)
-- a boss fight starts (`ActiveBossBattleId` rising edge — fog / named bar) (cheering)
+- a boss fight starts (`ActiveBossBattleId` rising edge, fog / named bar) (cheering)
 - that boss’s defeated event flag flips (applause)
-- the current map / area id changes after a load (scene wipe — proxy for the area title card)
+- the current map / area id changes after a load (scene wipe for the area title card)
 - an item is granted via the game’s ItemGive path (**ooh**)
 - fail states: empty Estus, locked/invalid use, no spell, ladder fall (CurrentAnim when readable)
 
@@ -15,13 +15,13 @@ Vanilla DS2 is **32-bit DirectX 9**. SotFS is **64-bit DirectX 11**. Those need 
 
 ## Install
 
-**Scholar of the First Sin** (Steam app 335300) — use `DS2SotFS_Sitcom.zip`:
+**Scholar of the First Sin** (Steam app 335300), `DS2SotFS_Sitcom.zip`:
 
 1. Copy `dinput8.dll` and the `sitcom/` folder into  
    `.../Dark Souls II Scholar of the First Sin/Game/` (next to `DarkSoulsII.exe`).
 2. Launch the game normally.
 
-**Vanilla Dark Souls II** (Steam app 236430, including the DX9 DLC bundle) — use `DS2_Sitcom.zip`:
+**Vanilla Dark Souls II** (Steam app 236430, including the DX9 DLC bundle), `DS2_Sitcom.zip`:
 
 1. Copy `dinput8.dll` and `sitcom/` into  
    `.../Dark Souls II/Game/` (next to `DarkSoulsII.exe`).

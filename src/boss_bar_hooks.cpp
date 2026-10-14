@@ -189,7 +189,7 @@ bool BossBarHooksInit() {
   }
   g_ready.store(true, std::memory_order_relaxed);
   if (g_trace.load(std::memory_order_relaxed)) {
-    LogWrite("boss_bar: TRACE ON — FeSceneBossHpGuage fields");
+    LogWrite("boss_bar: TRACE ON, FeSceneBossHpGuage fields");
   } else {
     LogWrite("boss_bar: FeSceneBossHpGuage hooked (observe)");
   }
